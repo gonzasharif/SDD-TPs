@@ -130,10 +130,12 @@ gente que no conoce la línea de comandos.
   proceso es constante respecto de su tamaño total: lectura por streaming en
   chunks de 64 KiB, con un buffer de línea acotado a **1 MiB** por defecto
   (configurable con `--max-line-size`). Una línea que exceda ese tamaño se
-  trunca para el matching (se busca el patrón solo dentro de la porción
-  bufferizada) y se emite un warning una única vez por objeto afectado. Memoria
-  adicional estimada: ≤ 5 MiB por objeto en procesamiento simultáneo, por lo
-  que con concurrencia N el uso adicional escala como ~5×N MiB.
+  **saltea por completo** (no se busca el patrón en ninguna porción de ella)
+  y se emite un warning una única vez por objeto afectado — no se trunca para
+  matchear, porque un truncado partiría un match real que cayera justo en el
+  punto de corte y lo perdería en silencio. Memoria adicional estimada:
+  ≤ 5 MiB por objeto en procesamiento simultáneo, por lo que con concurrencia
+  N el uso adicional escala como ~5×N MiB.
 - **NFR-c — Comportamiento ante fallos de red.** Un error transitorio de red
   (timeout, conexión reseteada, 5xx) al leer un objeto se reintenta hasta
   **3 intentos en total**, con backoff exponencial (500ms, 1s, 2s ± 20% de
