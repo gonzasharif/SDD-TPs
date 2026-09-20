@@ -22,9 +22,8 @@ go test ./...                             # tests unitarios
 
 El entorno de prueba real (proyecto de GCP, bucket, credenciales ADC) ya
 está armado — los nombres concretos no están versionados en el repo a
-propósito (ver `gcsgrep-cobertura-vc.md`); están en la memoria local del
-agente que lo armó. Antes de crear un proyecto/bucket nuevo, confirmá que
-no exista ya uno de una iteración anterior.
+propósito. Están en `gcsgrep/testenv.local.md` (gitignoreado); si no lo
+tenés, pedíselo a quien armó el entorno en vez de crear uno nuevo.
 
 ## Resumen
 

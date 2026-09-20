@@ -8,11 +8,10 @@
 > evidencia es un VC que no pasó.
 >
 > Entorno de prueba: un proyecto de GCP dedicado y un bucket de prueba en
-> `us-central1` (nombres reales deliberadamente no versionados acá — no son
-> secretos, pero tampoco hace falta exponerlos en un repo público; están en
-> la memoria local del agente que armó el entorno). ADC vía
-> `gcloud auth application-default login`. Implementación en Go, código en
-> `gcsgrep/`.
+> `us-central1` (nombres reales deliberadamente no versionados acá — ver
+> `gcsgrep/testenv.local.md`, gitignoreado; pedíselo a quien armó el
+> entorno si no lo tenés). ADC vía `gcloud auth application-default login`.
+> Implementación en Go, código en `gcsgrep/`.
 
 ## Iteración 1
 
