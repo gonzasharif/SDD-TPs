@@ -74,9 +74,44 @@ memoria ni escanear un bucket entero por accidente.
   verificable; la concurrencia es una optimización de rendimiento, no una
   corrección funcional.
 
-**Criterio de salida (VCs que deben pasar):** VC-1, VC-2, VC-3 (solo la rama
-sin color), VC-4, VC-8, VC-9, VC-11, VC-15, VC-16, VC-17, VC-22, VC-24, y la
-mitad secuencial de VC-21 (throughput ≥ 3 objetos/seg).
+**Criterios de éxito**
+
+- [ ] VC-1 pasa — búsqueda básica sobre un prefijo
+- [ ] VC-2 pasa — búsqueda sobre bucket completo
+- [ ] VC-3 pasa (solo la rama sin color) — formato `objeto:línea:texto` en
+      texto plano
+- [ ] VC-4 pasa — `-i` case-insensitive
+- [ ] VC-8 pasa — exit codes 0/1/2 en los tres escenarios controlados
+- [ ] VC-9 pasa — un objeto ilegible no aborta la corrida
+- [ ] VC-11 pasa — binarios se saltean sin volcar basura a la terminal
+- [ ] VC-15 pasa — la suite funciona igual con credenciales de solo lectura
+- [ ] VC-16 pasa — no se expone contenido fuera del acceso del usuario
+- [ ] VC-17 pasa — guardrail de cantidad de objetos (1000 por defecto)
+- [ ] VC-22 pasa — memoria constante entre un objeto chico y uno grande
+- [ ] VC-24 pasa — una línea que excede el buffer se saltea, no se trunca
+- [ ] VC-21 pasa (solo la mitad secuencial) — throughput ≥ 3 objetos/seg
+
+**Demostrable así:**
+
+```bash
+# Sobre un bucket de prueba gs://gcsgrep-test/logs/ con algunos objetos
+# de texto conocidos y un objeto binario mezclado.
+
+gcsgrep "timeout" gs://gcsgrep-test/logs/
+# imprime objeto:línea:texto por cada match, exit 0
+
+gcsgrep "patron_inexistente_xyz" gs://gcsgrep-test/logs/
+# sin resultados, exit 1
+
+gcsgrep -i "TIMEOUT" gs://gcsgrep-test/logs/
+# matchea sin distinguir mayúsculas, exit 0
+
+gcsgrep "timeout" gs://gcsgrep-test/
+# sin prefijo, cubre todo el bucket
+
+gcsgrep "x" gs://bucket-sin-permiso/
+# objeto/bucket no accesible con las credenciales del usuario, exit 2
+```
 
 ## Iteración 2 — Costo en objetos grandes/comprimidos, UX y confiabilidad de red
 
@@ -107,9 +142,27 @@ progreso), y dejar de ser pesimista ante blips de red transitorios.
   la introducción de paralelismo no se mezcla con la introducción de `.gz` y
   sus guardrails (dos fuentes de bugs a la vez es peor que una por vez).
 
-**Criterio de salida (VCs que deben pasar):** todos los de la Iteración 1
-siguen pasando, más VC-3 completo (con y sin color), VC-5, VC-6, VC-7,
-VC-10, VC-12, VC-18, VC-19, VC-23.
+**Criterios de éxito**
+
+- [ ] Todos los VCs de la Iteración 1 siguen pasando
+- [ ] VC-3 pasa completo (rama con color TTY, además de la rama plana ya
+      cubierta en la Iteración 1)
+- [ ] VC-5 pasa — `-l` corta la lectura en el primer match
+- [ ] VC-6 pasa — `-c` cuenta matches leyendo el objeto completo
+- [ ] VC-7 pasa — `-l` y `-c` juntas se rechazan con exit 2
+- [ ] VC-10 pasa — progreso con barra (TTY) y con líneas simples (no TTY)
+- [ ] VC-12 pasa — `.gz` se descomprime y se busca dentro del contenido
+- [ ] VC-18 pasa — guardrail de tamaño por objeto (250 MiB descomprimidos)
+- [ ] VC-19 pasa — guardrail acumulado de la corrida (2 GiB descomprimidos)
+- [ ] VC-23 pasa — reintentos ante fallos de red transitorios
+
+**Nota de regresión:** VC-3 se verificó en la Iteración 1 solo en su rama
+sin color (porque el color todavía no existía); acá hay que volver a
+correrlo agregando la rama con TTY, no alcanza con no romper la rama plana
+que ya pasaba. Además, VC-8 (exit codes) hay que re-ejercitarlo con las
+nuevas fuentes de error que aparecen en esta iteración —un guardrail de
+tamaño alcanzado (BR-4/BR-5) también tiene que producir exit 2, igual que
+un objeto sin permisos ya lo hacía en la Iteración 1.
 
 ## Iteración 3 — Concurrencia y validación de rendimiento
 
@@ -132,11 +185,43 @@ formalmente los umbrales de NFR-1 con un benchmark real.
 **Explícitamente afuera:** nada — con esta iteración se cierra la spec
 completa (15 FRs, 6 BRs, 3 NFRs).
 
-**Criterio de salida (VCs que deben pasar):** todos los de las Iteraciones 1
-y 2 siguen pasando (en particular, correr la suite completa con
-`--concurrency 8` y no solo en modo secuencial, para confirmar que la
-concurrencia no rompe ningún comportamiento ya validado), más VC-13, VC-14,
-VC-20, VC-21 completo.
+**Criterios de éxito**
+
+- [ ] Todos los VCs de las Iteraciones 1 y 2 siguen pasando, corridos además
+      con `--concurrency 8` (no solo en modo secuencial)
+- [ ] VC-13 pasa — reducción de tiempo total con concurrencia, mismo
+      conjunto de resultados que en modo secuencial
+- [ ] VC-14 pasa — `--concurrency` fuera de rango se rechaza
+- [ ] VC-20 pasa — idéntico a VC-14
+- [ ] VC-21 pasa completo — throughput con concurrencia y latencia al
+      primer resultado, además del umbral secuencial ya validado
+
+**Nota de regresión:** esta es la iteración de mayor riesgo de regresión
+silenciosa, porque introduce concurrencia sobre comportamiento que hasta acá
+solo corrió en un único hilo. En particular, BR-5 (guardrail acumulado) y
+FR-10 (progreso) dependen de contadores compartidos — si no se sincronizan
+correctamente, VC-19 y VC-10 podrían seguir "pasando" en una corrida
+puntual y fallar de forma intermitente bajo carga. No alcanza con correr la
+suite una vez con `--concurrency 8`: conviene correrla varias veces seguidas
+para exponer condiciones de carrera que no aparecen siempre.
+
+## Lo que quedó afuera del plan entero
+
+Esto no es "todavía no lo hicimos": es alcance rechazado en la spec (sección
+Alcance → Fuera), y vive acá también para que no vuelva a aparecer en cada
+conversación de implementación.
+
+| Idea | Decisión |
+|---|---|
+| Regex completa tipo PCRE, o elegible por flag | Descartado en v1 |
+| Autenticación por archivo de service account key | Descartado en v1 |
+| Sintaxis de ubicación sin esquema (`bucket/prefijo`) | Descartado en v1 |
+| Flags `-v`, `-r`, `--include` | Descartado en v1 |
+| Modo de salida JSON | Descartado en v1 |
+| Cualquier escritura/copia/borrado sobre GCS | Descartado — viola BR-1 |
+| Interfaz web, API HTTP, librería importable | Descartado en v1 |
+| Soporte para S3, Azure Blob u otro proveedor | Descartado en v1 |
+| Detección de generación/versión de objeto ante escritura concurrente | Riesgo conocido, aceptado (ver decisión de FR original sobre objetos que cambian mid-lectura) |
 
 ## Cómo se usa este plan
 
@@ -147,3 +232,9 @@ decisiones de la spec — solo agregan comportamiento que la spec ya
 contempla, en el orden que minimiza la superficie de riesgo por iteración
 (primero correctitud y seguridad, después cobertura de formatos reales,
 después rendimiento).
+
+## Qué sigue
+
+Tras implementar y verificar la Iteración 1, la evidencia de esa
+verificación va en `gcsgrep-cobertura-vc.md`: para cada VC de la lista de
+criterios de éxito, con qué se lo ejercitó y qué se observó.

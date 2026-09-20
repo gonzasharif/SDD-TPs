@@ -1,5 +1,6 @@
 # gcsgrep — Spec
 
+> **Estado: revisada.** Sin preguntas abiertas (ver cierre del documento).
 > Deriva de [`gcsgrep-requirements.md`](./gcsgrep-requirements.md) (base
 > context refinado). Este documento es el contrato verificable: cada FR está
 > en formato Dado/Cuando/Entonces, cada BR tiene fundamento, y cada FR y BR
@@ -419,32 +420,36 @@ fallido inmediatamente, sin reintentos.
 
 ## Cobertura de VCs
 
-| Requisito | VC | Verificado por |
-|---|---|---|
-| FR-1 | VC-1 | Test de integración contra bucket de prueba |
-| FR-2 | VC-2 | Test de integración |
-| FR-3 | VC-3 | Test de integración (TTY simulado + pipe) |
-| FR-4 | VC-4 | Test de integración |
-| FR-5 | VC-5 | Test de integración + medición de bytes leídos |
-| FR-6 | VC-6 | Test de integración |
-| FR-7 | VC-7 | Test unitario/CLI (validación de flags) |
-| FR-8 | VC-8 | 3 tests de integración (match/no-match/error) |
-| FR-9 | VC-9 | Test de integración con ACL restringida |
-| FR-10 | VC-10 | Test de integración, captura de stderr |
-| FR-11 | VC-11 | Test de integración con objeto binario |
-| FR-12 | VC-12 | Test de integración con objeto .gz |
-| FR-13 | VC-13 | Benchmark de concurrencia |
-| FR-14 | VC-14 | Test unitario/CLI (validación de flags) |
-| FR-15 | VC-24 | Test de integración con línea que excede el buffer |
-| BR-1 | VC-15 | Test de integración con credenciales de solo lectura |
-| BR-2 | VC-16 | Test de integración con ACL restringida |
-| BR-3 | VC-17 | Test de integración con prefijo grande |
-| BR-4 | VC-18 | Test de integración con .gz grande |
-| BR-5 | VC-19 | Test de integración con guardrail acumulado bajo |
-| BR-6 | VC-20 | = VC-14 |
-| NFR-1 | VC-21 | Benchmark de rendimiento |
-| NFR-2 | VC-22 | Benchmark de memoria (RSS) |
-| NFR-3 | VC-23 | Test con proxy/mock de fallos de red |
+| Requisito | VC | Camino | Verificado por |
+|---|---|---|---|
+| FR-1 | VC-1 | feliz | Test de integración contra bucket de prueba |
+| FR-2 | VC-2 | feliz | Test de integración |
+| FR-3 | VC-3 | borde (entorno TTY / pipe) | Test de integración (TTY simulado + pipe) |
+| FR-4 | VC-4 | feliz | Test de integración |
+| FR-5 | VC-5 | feliz | Test de integración + medición de bytes leídos |
+| FR-6 | VC-6 | feliz | Test de integración |
+| FR-7 | VC-7 | falla | Test unitario/CLI (validación de flags) |
+| FR-8 | VC-8 | feliz + falla (3 casos) | 3 tests de integración (match/no-match/error) |
+| FR-9 | VC-9 | falla (recuperable) | Test de integración con ACL restringida |
+| FR-10 | VC-10 | borde (entorno TTY / pipe) | Test de integración, captura de stderr |
+| FR-11 | VC-11 | borde (tipo de contenido) | Test de integración con objeto binario |
+| FR-12 | VC-12 | feliz | Test de integración con objeto .gz |
+| FR-13 | VC-13 | medición | Benchmark de concurrencia |
+| FR-14 | VC-14 | falla | Test unitario/CLI (validación de flags) |
+| FR-15 | VC-24 | borde (línea extrema) | Test de integración con línea que excede el buffer |
+| BR-1 | VC-15 | invariante | Test de integración con credenciales de solo lectura |
+| BR-2 | VC-16 | invariante | Test de integración con ACL restringida |
+| BR-3 | VC-17 | borde (límite de cantidad) | Test de integración con prefijo grande |
+| BR-4 | VC-18 | borde (límite de tamaño) | Test de integración con .gz grande |
+| BR-5 | VC-19 | borde (límite acumulado) | Test de integración con guardrail acumulado bajo |
+| BR-6 | VC-20 | falla | = VC-14 |
+| NFR-1 | VC-21 | medición | Benchmark de rendimiento |
+| NFR-2 | VC-22 | medición | Benchmark de memoria (RSS) |
+| NFR-3 | VC-23 | feliz + falla (3 casos) | Test con proxy/mock de fallos de red |
+
+**15 FRs + 6 BRs + 3 NFRs = 24 requerimientos, 24 VCs, 0 huérfanos.** De los
+24, 9 ejercitan un camino de falla o borde y 2 son invariantes — no es una
+tabla de puro camino feliz.
 
 ## Trazabilidad al borrador original
 
@@ -464,3 +469,15 @@ fallido inmediatamente, sin reintentos.
 | BR-2 | BR-b |
 | BR-3 | BR-c |
 | BR-4, BR-5 | Sin equivalente — surgidas en el refinamiento |
+
+## Preguntas abiertas
+
+Ninguna. Las 10 preguntas abiertas del borrador (`gcsgrep-requirements.md`)
+y las que surgieron durante la atomización (mutua exclusión de `-l`/`-c`,
+tope de concurrencia, riesgo de falso negativo en líneas largas) quedaron
+resueltas en la revisión conversacional de este documento — no queda ningún
+"a definir" pendiente.
+
+## Qué sigue
+
+El plan de iteraciones está en [`gcsgrep-plan.md`](./gcsgrep-plan.md).

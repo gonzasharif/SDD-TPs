@@ -200,6 +200,79 @@ Las 10 preguntas abiertas del borrador original, resueltas:
     lectura. GCS ya garantiza que no se mezclan bytes de dos versiones dentro
     de una sola llamada de lectura.
 
+## Esquema de arquitectura
+
+### Módulos
+
+```
+cli         → parsea argv/flags, valida combinaciones inválidas (-l + -c,
+              --concurrency fuera de rango), despacha al scanner, traduce
+              el resultado final a exit code (FR-8)
+scanner     → lista objetos bajo el prefijo vía gcsclient, aplica el
+              guardrail de cantidad (BR-3) antes de leer nada, arma el
+              worker pool (FR-13) y reparte objetos de una cola compartida,
+              agrega los contadores compartidos (bytes acumulados de BR-5,
+              progreso de FR-10) de forma thread-safe, y decide el
+              resultado global (¿hubo match? ¿hubo algún error?)
+reader      → por objeto individual: abre el stream vía gcsclient, detecta
+              binario (FR-11), descomprime .gz al vuelo (FR-12), aplica el
+              guardrail de tamaño por objeto (BR-4), aplica el límite de
+              línea (FR-15), reintenta ante fallos de red transitorios
+              (NFR-3), y usa match para evaluar cada línea
+match       → aplica el patrón (literal o regex básica, case-insensitive
+              si corresponde) sobre una línea de texto. Sin I/O — es la
+              pieza más fácil de testear unitariamente
+gcsclient   → única puerta de entrada a la API de GCS: listar objetos y
+              abrir su stream de lectura, con las credenciales ADC del
+              usuario. No expone ningún método de escritura, copia o
+              borrado — eso hace estructuralmente imposible que el resto
+              del código viole BR-1, no depende de que nadie se acuerde
+              de no llamar a un método de escritura
+output      → formatea resultados para stdout (objeto:línea:texto, color
+              si hay TTY — FR-3) y escribe warnings/progreso a stderr
+              (FR-9, FR-10), también con su propia detección de TTY
+```
+
+La dependencia va en una sola dirección: `cli → scanner → reader → gcsclient`,
+con `match` y `output` como hojas sin dependencias de negocio. `gcsclient` es
+el único módulo que conoce el SDK de GCS; `match` no sabe que existe una red,
+y eso es lo que permite testear el matching y el parseo de flags sin tocar
+un bucket real.
+
+### Flujo de datos
+
+```
+argv → cli (parsea + valida)
+         → scanner: lista objetos vía gcsclient, aplica BR-3
+             → worker pool (N workers, cola compartida)
+                 → por cada objeto: reader (gcsclient + match)
+                                        ↓
+                          resultado del objeto: matches / saltado / fallido
+                                        ↓
+                              output (stdout: matches · stderr: avisos)
+         ← scanner agrega el resultado global
+       → cli traduce a exit code (FR-8)
+```
+
+### Actores
+
+| Actor | Interacción |
+|---|---|
+| Persona operadora/desarrolladora | Ejecuta `gcsgrep` en una shell o script, lee stdout/stderr |
+| Script consumidor | Ejecuta `gcsgrep` y decide en base al **exit code**, no al texto |
+| Google Cloud Storage | Fuente de datos vía `gcsclient`; puede fallar por permisos, red, o no existir el bucket/objeto |
+
+### Riesgo conocido
+
+Un objeto puede sobreescribirse entre el momento en que `scanner` lo lista y
+el momento en que `reader` lo abre para leer. **Decisión: fuera de alcance
+en v1** — no se fija la generación del objeto al listar (ver decisión #10
+en "Decisiones tomadas"). Se acepta porque GCS ya garantiza que no se
+mezclan bytes de dos versiones dentro de una sola llamada de lectura, y el
+caso de uso principal (logs) tiende a agregar objetos nuevos en vez de
+sobreescribir los existentes. Queda anotado acá para que sea una decisión
+consciente, y aparece como no-objetivo explícito en la spec.
+
 ## Cómo seguir
 
 Con las preguntas resueltas, el paso siguiente ya no es refinar este
