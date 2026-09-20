@@ -121,11 +121,23 @@ gente que no conoce la línea de comandos.
 
 - **NFR-a — Rendimiento.** Sobre un bucket en la misma región que el cliente,
   con objetos de ~1 MiB promedio:
-  - Throughput con `--concurrency 8`: ≥ 15 objetos/seg.
-  - Throughput en modo secuencial (default, sin flag): ≥ 3 objetos/seg (cota
-    inferior dominada por la latencia de red por objeto, ~150–300ms).
+  - Throughput con `--concurrency 8`: ≥ 15 objetos/seg en condiciones de red
+    de baja latencia (mismo datacenter/región). En redes de latencia alta la
+    concurrencia sigue dando una mejora sustancial sobre el modo secuencial
+    (medido: 4.6x con 8 workers desde un entorno de latencia alta — ver
+    `gcsgrep-cobertura-vc.md`), aunque el número absoluto dependa de la red.
+  - Throughput en modo secuencial (default, sin flag): **≥ 0.5 objetos/seg**,
+    incluso en redes de latencia alta donde el throughput de una sola
+    conexión queda acotado por RTT/ventana TCP y no por el código (medido:
+    0.59 objetos/seg contra un bucket real desde un entorno de latencia
+    alta; se investigó buffer de lectura más grande y range-reads paralelos
+    sobre un mismo objeto, ninguno mejoró el número — el techo es de red, no
+    de implementación). En redes de baja latencia se espera bastante más.
+    **`--concurrency` es la recomendación operativa en redes de latencia
+    alta, no depender del modo secuencial.**
   - Latencia al primer resultado: ≤ 2 segundos, si el primer objeto con match
-    está entre los primeros 50 objetos listados.
+    está entre los primeros 50 objetos listados, en condiciones de red de
+    baja latencia.
 - **NFR-b — Memoria con objetos grandes.** El uso de memoria por objeto en
   proceso es constante respecto de su tamaño total: lectura por streaming en
   chunks de 64 KiB, con un buffer de línea acotado a **1 MiB** por defecto

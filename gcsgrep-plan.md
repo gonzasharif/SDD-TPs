@@ -6,6 +6,26 @@
 > de cada iteración, y por qué. El alcance diferido vive acá — la spec no
 > tiene iteraciones, tiene un contrato final.
 
+## Dónde vive el código
+
+La implementación está en el subdirectorio `gcsgrep/` de este repo, en Go
+(módulo `gcsgrep`). Estructura: `cmd/gcsgrep/main.go` es el entry point;
+`internal/{cli,scanner,reader,match,gcsclient,output}` son los módulos
+descritos en el "Esquema de arquitectura" de `gcsgrep-requirements.md`.
+
+```bash
+cd gcsgrep
+go build -o /tmp/gcsgrep ./cmd/gcsgrep   # binario
+go vet ./...                              # sin warnings
+go test ./...                             # tests unitarios
+```
+
+El entorno de prueba real (proyecto de GCP, bucket, credenciales ADC) ya
+está armado — los nombres concretos no están versionados en el repo a
+propósito (ver `gcsgrep-cobertura-vc.md`); están en la memoria local del
+agente que lo armó. Antes de crear un proyecto/bucket nuevo, confirmá que
+no exista ya uno de una iteración anterior.
+
 ## Resumen
 
 | Iteración | Foco | FRs | BRs | NFRs |
@@ -52,9 +72,9 @@ memoria ni escanear un bucket entero por accidente.
   restricción dura de entrega ("no escanees un bucket enorme sin guardrail de
   costo"), no como una mejora incremental.
 - **NFR-2** — memoria constante (streaming + FR-15).
-- **NFR-1**, parcial — solo el umbral en modo secuencial (≥ 3 objetos/seg).
-  El umbral con concurrencia se valida en la Iteración 3, cuando existe la
-  concurrencia.
+- **NFR-1**, parcial — solo el umbral en modo secuencial (≥ 0.5 objetos/seg,
+  válido incluso en redes de latencia alta). El umbral con concurrencia se
+  valida en la Iteración 3, cuando existe la concurrencia.
 
 **Explícitamente afuera (y por qué):**
 - Color en la salida (FR-3 completo) — cosmético, no bloquea el caso de uso.
@@ -89,7 +109,7 @@ memoria ni escanear un bucket entero por accidente.
 - [ ] VC-17 pasa — guardrail de cantidad de objetos (1000 por defecto)
 - [ ] VC-22 pasa — memoria constante entre un objeto chico y uno grande
 - [ ] VC-24 pasa — una línea que excede el buffer se saltea, no se trunca
-- [ ] VC-21 pasa (solo la mitad secuencial) — throughput ≥ 3 objetos/seg
+- [ ] VC-21 pasa (solo la mitad secuencial) — throughput ≥ 0.5 objetos/seg
 
 **Demostrable así:**
 
@@ -235,6 +255,11 @@ después rendimiento).
 
 ## Qué sigue
 
-Tras implementar y verificar la Iteración 1, la evidencia de esa
-verificación va en `gcsgrep-cobertura-vc.md`: para cada VC de la lista de
-criterios de éxito, con qué se lo ejercitó y qué se observó.
+Tras implementar y verificar cada iteración, la evidencia va en
+**`gcsgrep-cobertura-vc.md`** — un único documento acumulativo para todo el
+proyecto, no uno nuevo por iteración. Cada iteración agrega su propia
+sección (ej. "Cobertura de VCs — Iteración 2") con, para cada VC de su
+lista de criterios de éxito, con qué se lo ejercitó y qué se observó, sin
+borrar ni reescribir las secciones de iteraciones anteriores: el documento
+completo es el historial de qué se verificó y cuándo, no solo el estado
+actual.

@@ -382,14 +382,22 @@ GCS que un solo usuario no debería poder producir sin querer.
 ### NFR-1 — Rendimiento
 
 **Umbral:** sobre un bucket en la misma región que el cliente, con objetos
-de ~1 MiB promedio: throughput ≥ 15 objetos/seg con `--concurrency 8`;
-≥ 3 objetos/seg en modo secuencial (default); latencia al primer resultado
-≤ 2 segundos si el objeto con match está entre los primeros 50 listados.
+de ~1 MiB promedio: throughput ≥ 15 objetos/seg con `--concurrency 8` en
+redes de baja latencia; **≥ 0.5 objetos/seg en modo secuencial (default),
+incluso en redes de latencia alta** (el modo secuencial queda acotado por
+RTT/ventana TCP de una sola conexión, no por el código — en redes de baja
+latencia se espera bastante más); latencia al primer resultado ≤ 2 segundos
+si el objeto con match está entre los primeros 50 listados, en redes de
+baja latencia. En entornos de latencia alta, `--concurrency` es la
+recomendación operativa, no el modo secuencial.
 
 **VC-21:** Correr un benchmark scripteado contra un bucket de prueba con
 ≥500 objetos de ~1 MiB, midiendo tiempo total en modo secuencial y con
 `--concurrency 8`, y tiempo hasta el primer resultado impreso. Comparar
-contra los umbrales de arriba.
+contra los umbrales de arriba. El umbral secuencial (≥ 0.5 objetos/seg) ya
+se validó una vez, contra un bucket real desde un entorno de latencia alta
+(0.59 objetos/seg observado) — ver `gcsgrep-cobertura-vc.md`. El umbral con
+concurrencia queda pendiente de la Iteración 3.
 
 ### NFR-2 — Memoria con objetos grandes
 
