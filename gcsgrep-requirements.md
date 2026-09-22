@@ -64,7 +64,8 @@ gente que no conoce la línea de comandos.
 - **FR-d** — Soporta `-i` (case-insensitive), `-n` (número de línea — activado
   por defecto en el formato de FR-c), `-l` (listar solo objetos con al menos un
   match, cortando la lectura del objeto en el primer match) y `-c` (contar
-  matches por objeto, leyendo el objeto completo). `-l` y `-c` son mutuamente
+  matches por objeto, leyendo el objeto completo; imprime también los
+  objetos con `0`, como `grep -c`). `-l` y `-c` son mutuamente
   excluyentes: pasarlas juntas es un error de uso (exit code 2).
 - **FR-e** — El exit code sigue la convención de `grep`: `0` si hubo al menos un
   match, `1` si no hubo ningún match y no hubo errores, `2` si hubo algún error
@@ -97,18 +98,22 @@ gente que no conoce la línea de comandos.
 - **BR-d** — Detección de binarios: un objeto se trata como binario (y se
   saltea, con aviso por `stderr`) si sus primeros 8 KiB contienen un byte nulo
   (`0x00`) — heurística estándar equivalente a la que usa GNU grep.
-- **BR-e** — Los objetos `.gz` (detectados por extensión de nombre) se
-  descomprimen al vuelo por streaming y se busca dentro del contenido
+- **BR-e** — Los objetos gzip (detectados por la firma `1f 8b` en sus
+  primeros 2 bytes, no por la extensión: un objeto subido con
+  `Content-Encoding: gzip` llega ya descomprimido por GCS aunque se llame
+  `.gz`) se descomprimen al vuelo por streaming y se busca dentro del contenido
   descomprimido, tratado como texto (sujeto a la misma detección de binario de
   BR-d sobre el contenido ya descomprimido).
-- **BR-f** — Guardrail de tamaño descomprimido por objeto: si el contenido
-  descomprimido leído de un objeto supera **250 MiB** (valor por defecto
-  propuesto), se corta la lectura de ese objeto, se emite un warning por
+- **BR-f** — Guardrail de tamaño por objeto, comprimido o no: si el contenido
+  (descomprimido, si aplica) leído de un objeto supera **250 MiB** (valor por
+  defecto propuesto), se corta la lectura de ese objeto; si el tamaño listado
+  ya supera el límite, se saltea sin abrirlo. En ambos casos se emite un warning por
   `stderr` indicando que se alcanzó el límite, y se continúa con el resto de
   los objetos. Configurable con `--max-object-size`.
 - **BR-g** — Guardrail de tamaño descomprimido acumulado: si la suma de bytes
   descomprimidos leídos en toda la corrida supera **2 GiB** (valor por defecto
-  propuesto), la herramienta deja de leer objetos nuevos, informa por `stderr`
+  propuesto), la herramienta corta la lectura en ese punto (incluido el
+  objeto en curso) y no abre objetos nuevos, informa por `stderr`
   que el guardrail acumulado se alcanzó y que el escaneo quedó incompleto, y
   termina reportando los matches encontrados hasta ese punto. Configurable con
   `--max-total-size`. Cuenta como error a efectos de FR-e (exit code 2).
@@ -149,9 +154,10 @@ gente que no conoce la línea de comandos.
   ≤ 5 MiB por objeto en procesamiento simultáneo, por lo que con concurrencia
   N el uso adicional escala como ~5×N MiB.
 - **NFR-c — Comportamiento ante fallos de red.** Un error transitorio de red
-  (timeout, conexión reseteada, 5xx) al leer un objeto se reintenta hasta
-  **3 intentos en total**, con backoff exponencial (500ms, 1s, 2s ± 20% de
-  jitter). Si los 3 intentos fallan, el objeto se marca como fallido (FR-f) y
+  (timeout, conexión reseteada, 5xx) al abrir un objeto se reintenta hasta
+  **3 intentos en total**, con backoff exponencial (500ms y 1s entre
+  intentos, ± 20% de jitter). Un error a mitad de la lectura no se reintenta
+  (releer duplicaría matches ya impresos): el objeto se marca como fallido. Si los 3 intentos fallan, el objeto se marca como fallido (FR-f) y
   la corrida continúa. Errores permanentes (403 Forbidden, 404 Not Found) no
   se reintentan: se marcan como fallidos de inmediato.
 

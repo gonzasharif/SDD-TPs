@@ -132,10 +132,13 @@ nombre del objeto.
 - **Dado** el flag `-c`,
 - **Cuando** se procesa un objeto completo,
 - **Entonces** se imprime `objeto:cantidad`, donde `cantidad` es el total de
-  líneas que matchean.
+  líneas que matchean — incluso si es `0` (igual que `grep -c`). Los objetos
+  salteados (binarios) o fallidos no imprimen línea de conteo: no se
+  procesaron completos, y un `0` ahí sería falso.
 
-**VC-6:** Objeto con K líneas que matchean (K conocido de antemano). Verificar
-que la salida reporta exactamente K.
+**VC-6:** Prefijo con un objeto con K líneas que matchean (K conocido de
+antemano) y otro objeto de texto sin ningún match. Verificar que la salida
+reporta exactamente `objeto1:K` y `objeto2:0`.
 
 ### FR-7 — `-l` y `-c` son mutuamente excluyentes
 *(nuevo, surgido en el refinamiento)*
@@ -214,15 +217,26 @@ los objetos de texto se procesan con normalidad.
 ### FR-12 — Descompresión de `.gz` al vuelo
 *(deriva de BR-e del borrador; mismo criterio que FR-11)*
 
-- **Dado** un objeto cuyo nombre termina en `.gz`,
+- **Dado** un objeto cuyos primeros 2 bytes son la firma gzip (`1f 8b`),
+  independientemente de su nombre,
 - **Cuando** se lo procesa,
 - **Entonces** se descomprime por streaming y se busca el patrón dentro del
-  contenido descomprimido, reportando el nombre del objeto `.gz` original (no
-  un nombre descomprimido), sujeto a los guardrails BR-4 y BR-5.
+  contenido descomprimido, reportando el nombre original del objeto (no un
+  nombre descomprimido), sujeto a los guardrails BR-4 y BR-5. La detección
+  de binarios (FR-11) se aplica sobre el contenido **ya descomprimido**, no
+  sobre los bytes comprimidos (que siempre contienen bytes nulos).
 
-**VC-12:** Objeto `.gz` de prueba con contenido de texto conocido y matches
-garantizados. Verificar que los matches se reportan con el nombre del objeto
-`.gz`, y que en ningún momento se escribe el contenido descomprimido a disco.
+*Por qué la firma y no la extensión:* un objeto subido con metadata
+`Content-Encoding: gzip` (ej. `gsutil cp -Z`) le llega al cliente ya
+descomprimido por GCS (decompressive transcoding), aunque su nombre termine
+en `.gz`; descomprimirlo de nuevo por extensión fallaría. Mirar la firma del
+contenido que efectivamente llega resuelve ambos casos con la misma regla.
+
+**VC-12:** Tres objetos de prueba con contenido de texto conocido y matches
+garantizados: (a) `.gz` subido tal cual; (b) `.gz` subido con
+`Content-Encoding: gzip`; (c) objeto gzip sin extensión `.gz`. Verificar que
+en los tres casos los matches se reportan con el nombre original del objeto,
+y que en ningún momento se escribe el contenido descomprimido a disco.
 
 ### FR-13 — Concurrencia configurable
 *(deriva de la decisión de concurrencia)*
@@ -328,26 +342,43 @@ de lectura de objeto, solo la llamada de listado), y que con `--max 20` (o
 ### BR-4 — Guardrail de tamaño por objeto
 *(deriva de BR-f del borrador, nuevo en el refinamiento)*
 
-**Regla:** si el contenido descomprimido leído de un objeto supera 250 MiB,
-se corta la lectura de ese objeto y se continúa con el resto.
+**Regla:** ningún objeto —comprimido o no— lee más de 250 MiB de contenido
+(descomprimido, si aplica). Se aplica en dos puntos:
 
-**Fundamento:** protección contra un objeto `.gz` que se expande de forma
-desproporcionada (deliberada o accidentalmente) y consume tiempo, memoria o
-costo fuera de proporción.
+1. **Antes de abrir:** si el tamaño que informa el listado ya supera el
+   límite, el objeto se saltea sin leer ni un byte. Vale para cualquier
+   objeto: un objeto comprimido de más de 250 MiB en GCS descomprime, en la
+   práctica, a más que eso.
+2. **Durante la lectura:** si el contenido leído (descomprimido, si es gzip)
+   cruza el límite, se corta la lectura de ese objeto. Cubre el caso que el
+   punto 1 no puede ver: un gzip chico que se expande mucho.
+
+En ambos casos se emite un warning por `stderr` y se continúa con el resto de
+los objetos. Los matches ya impresos de un objeto cortado en el punto 2 se
+mantienen.
+
+**Fundamento:** protección contra un objeto que consume tiempo, memoria o
+costo fuera de proporción — sea un `.gz` que se expande de forma
+desproporcionada (deliberada o accidentalmente) o simplemente un objeto de
+texto enorme.
 
 **Excepciones:** configurable con `--max-object-size`.
 
-**VC-18:** Objeto `.gz` de prueba que descomprime a más de 250 MiB (o límite
-bajo simulado con `--max-object-size` para acelerar el test). Verificar que
-la lectura se corta en el límite, se emite warning por `stderr`, y la corrida
-continúa con el resto de los objetos del prefijo.
+**VC-18:** Dos escenarios, con límite bajo simulado vía `--max-object-size`
+para acelerar el test. (a) Objeto de texto plano cuyo tamaño listado supera
+el límite: verificar cero llamadas de apertura para ese objeto y un warning
+por `stderr`. (b) Objeto gzip chico que descomprime a más del límite:
+verificar que la lectura se corta en el límite y se emite warning. En ambos,
+la corrida continúa con el resto de los objetos del prefijo y termina con
+exit code 2 (por FR-8).
 
 ### BR-5 — Guardrail acumulado de la corrida
 *(deriva de BR-g del borrador, nuevo en el refinamiento)*
 
 **Regla:** si la suma de bytes descomprimidos leídos en toda la corrida
-supera 2 GiB, se deja de leer objetos nuevos y se termina informando lo
-encontrado hasta ese punto.
+supera 2 GiB, se corta la lectura en ese mismo punto —incluido el objeto que
+se está leyendo, aunque esté a la mitad—, no se abre ningún objeto nuevo, y
+se termina informando lo encontrado hasta ahí.
 
 **Fundamento:** control de costo total de la corrida completa (no solo por
 objeto individual) — leer de GCS se cobra por bytes.
@@ -356,8 +387,9 @@ objeto individual) — leer de GCS se cobra por bytes.
 
 **VC-19:** Prefijo con suficientes objetos para superar un
 `--max-total-size` bajo (ej. 10 MiB, para que el test corra rápido).
-Verificar que la herramienta deja de leer objetos nuevos al cruzar el límite,
-reporta los matches encontrados hasta el corte, emite el aviso
+Verificar que la herramienta corta la lectura al cruzar el límite (el total
+de bytes leídos no supera el límite por más de un chunk de lectura), no abre
+ningún objeto posterior, reporta los matches encontrados hasta el corte, emite el aviso
 correspondiente por `stderr`, y termina con exit code 2 (por FR-8).
 
 ### BR-6 — Tope de concurrencia
@@ -414,17 +446,29 @@ al tamaño del objeto) — ej. diferencia ≤ 20 MiB.
 
 ### NFR-3 — Comportamiento ante fallos de red
 
-**Umbral:** un error transitorio (timeout, conexión reseteada, 5xx) se
-reintenta hasta 3 intentos en total, con backoff exponencial (500ms, 1s, 2s
-± 20% de jitter). Tras 3 fallos, el objeto se marca como fallido. Errores
-permanentes (403, 404) no se reintentan.
+**Umbral:** un error transitorio (timeout, conexión reseteada, 5xx) al
+**abrir** un objeto se reintenta hasta 3 intentos en total, con backoff
+exponencial entre intentos (500ms antes del 2º, 1s antes del 3º, ± 20% de
+jitter). Tras 3 fallos, el objeto se marca como fallido. Errores permanentes
+(403, 404) no se reintentan.
 
-**VC-23:** Con un proxy/mock de la API de GCS que simula: (a) 2 fallos
+Un error a **mitad de la lectura** (después de que el objeto ya se abrió) no
+se reintenta: para ese punto ya pueden haberse impreso matches del objeto, y
+releerlo desde el principio los duplicaría en `stdout`. El objeto se marca
+como fallido (FR-9, exit 2 por FR-8); los matches ya impresos se mantienen,
+porque son correctos — lo que queda incompleto es el resto del objeto, y el
+exit 2 lo señala. El reintento automático del SDK de GCS se desactiva, para
+que la política efectiva sea exactamente esta y no la suma de dos.
+
+**VC-23:** Con un mock del cliente de GCS que simula, al abrir: (a) 2 fallos
 transitorios seguidos de éxito → verificar que el objeto se procesa
 correctamente (recuperado, sin aparecer como fallido); (b) 3 fallos
 transitorios consecutivos → verificar que el objeto se marca como fallido
 (FR-9) tras exactamente 3 intentos; (c) un 403 → verificar que se marca como
-fallido inmediatamente, sin reintentos.
+fallido inmediatamente, sin reintentos. Además: (d) un stream que falla a
+mitad de la lectura, después de un match → verificar que ese match se
+imprime una sola vez, el objeto queda como fallido y hay exactamente 1
+apertura (sin reintento).
 
 ## Cobertura de VCs
 
