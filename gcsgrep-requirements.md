@@ -232,11 +232,11 @@ scanner     → lista objetos bajo el prefijo vía gcsclient, aplica el
               agrega los contadores compartidos (bytes acumulados de BR-5,
               progreso de FR-10) de forma thread-safe, y decide el
               resultado global (¿hubo match? ¿hubo algún error?)
-reader      → por objeto individual: abre el stream vía gcsclient, detecta
-              binario (FR-11), descomprime .gz al vuelo (FR-12), aplica el
-              guardrail de tamaño por objeto (BR-4), aplica el límite de
-              línea (FR-15), reintenta ante fallos de red transitorios
-              (NFR-3), y usa match para evaluar cada línea
+reader      → por objeto individual, sobre el stream que abrió scanner:
+              descomprime gzip al vuelo (FR-12), aplica los guardrails de
+              tamaño por objeto y acumulado (BR-4, BR-5), detecta binario
+              sobre el contenido ya descomprimido (FR-11), aplica el límite
+              de línea (FR-15), y usa match para evaluar cada línea
 match       → aplica el patrón (literal o regex básica, case-insensitive
               si corresponde) sobre una línea de texto. Sin I/O — es la
               pieza más fácil de testear unitariamente
@@ -245,7 +245,9 @@ gcsclient   → única puerta de entrada a la API de GCS: listar objetos y
               usuario. No expone ningún método de escritura, copia o
               borrado — eso hace estructuralmente imposible que el resto
               del código viole BR-1, no depende de que nadie se acuerde
-              de no llamar a un método de escritura
+              de no llamar a un método de escritura. También reintenta
+              los fallos transitorios de listar y abrir (NFR-3), con los
+              reintentos propios del SDK desactivados
 output      → formatea resultados para stdout (objeto:línea:texto, color
               si hay TTY — FR-3) y escribe warnings/progreso a stderr
               (FR-9, FR-10), también con su propia detección de TTY

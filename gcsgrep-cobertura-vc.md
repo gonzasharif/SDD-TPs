@@ -129,3 +129,145 @@ BUCKET=<test-bucket>
 - **El ajuste de NFR-1 (nota 2) se hizo con evidencia, no a ojo:** se
   investigó primero si había algo arreglable en el código antes de tocar el
   número, y quedó registrado qué se descartó y por qué.
+
+## Iteración 2
+
+### Resumen
+
+| | |
+|---|---|
+| VCs en el alcance de la Iteración 2 | 10 (VC-3 completo, VC-5, VC-6, VC-7, VC-10, VC-12, VC-18, VC-19, VC-23, más la regresión de VC-8) |
+| VCs con cobertura ejecutable | 10 |
+| VCs pasando (tests unitarios + emulador local) | 10 |
+| VCs verificados contra GCS real | **0 — pendiente** (ver nota 3) |
+| Tests unitarios | 59 (21 de la Iteración 1 + 38 nuevos), todos verdes; `go vet` sin warnings |
+
+### Cómo se verificó esta vez: tres niveles
+
+1. **Tests unitarios** (`go test ./...`), con clientes GCS fake inyectados vía
+   la interfaz `gcsclient.Client`, igual que en la Iteración 1.
+2. **Binario real contra un emulador local de GCS.** El SDK de GCS respeta
+   la variable `STORAGE_EMULATOR_HOST`: se armó un servidor HTTP mínimo (fuera
+   del repo) que implementa el listado (`/storage/v1/b/{bucket}/o`) y la
+   descarga de objetos, registra cada request, puede inyectar 503 y emula el
+   *decompressive transcoding* de GCS para objetos con
+   `Content-Encoding: gzip`. Esto ejercita el binario compilado de punta a
+   punta —con el SDK real, su configuración de reintentos real, y una TTY
+   real (`script`)— sin credenciales. No sustituye a GCS real (ver nota 3),
+   pero es un nivel de evidencia más alto que el cliente fake: lo que se
+   prueba acá es el mismo binario que se entrega.
+3. **GCS real:** pendiente.
+
+### Cobertura, una por una
+
+| VC | Requisito | Ejercitado por | Se observa | Estado |
+|---|---|---|---|---|
+| VC-3 (completo) | FR-3 color condicional a TTY | `internal/output/output_test.go::TestMatch_PlainHasNoEscapeCodes`, `TestMatch_ColorHighlightsEveryMatch`, `TestMatch_ColorSkipsEmptySpans` + emulador bajo pty (`script -qec`) y con `stdout` a archivo | con pty: los 60 matches de `many/` envueltos en `\x1b[01;31m…\x1b[m`; con `stdout` a archivo: cero bytes `\x1b`, formato `objeto:línea:texto`. Detección con `x/term` (`isatty` real): verdadero en pty, falso en pipe, archivo y `/dev/null` | ✅ |
+| VC-5 | FR-5 `-l` corta en el primer match | `internal/reader/reader_test.go::TestProcessObject_ListModeStopsAtFirstMatch`, `internal/scanner/scanner_test.go::TestRun_ListModePrintsOnlyMatchingObjectNames` + emulador | objeto de 10 MiB con match en la línea 1: se leen ≤ 72 KiB (buffers de sniff + bufio). **Mutación comprobada:** sacando el corte temprano, el test falla leyendo los 10 MiB completos. Salida: solo nombres, una vez por objeto | ✅ |
+| VC-6 | FR-6 `-c` | `TestProcessObject_CountModeCountsEveryMatch`, `TestRun_CountModePrintsZeroCountsButNotSkippedObjects`, `TestRun_CountModeWithNoMatchesExitsNoMatch` + emulador | `logs/app1.log:1`, `logs/app2.log:0`, `logs/app3.log:0`; el binario (`icon.png`) no imprime conteo; todo en cero → exit 1 | ✅ |
+| VC-7 | FR-7 `-l` + `-c` | `internal/cli/cli_test.go::TestParse_ListAndCountAreMutuallyExclusive` + emulador | exit 2, error de uso por `stderr`, **cero requests** registrados por el emulador (se rechaza antes de crear el cliente GCS) | ✅ |
+| VC-8 (regresión) | FR-8 con las fuentes de error nuevas | `TestRun_ObjectOverSizeLimitIsSkippedBeforeOpening`, `TestRun_ExpandingGzipIsCutAtObjectLimit`, `TestRun_TotalSizeLimitStopsTheRun`, `TestRun_MidReadFailurePrintsEarlierMatchesOnce` + emulador | BR-4 (antes de abrir y durante la lectura), BR-5, y fallo a mitad de lectura → exit 2 aunque haya matches en otros objetos; los tres casos de la Iteración 1 (0/1/2) siguen pasando | ✅ |
+| VC-10 | FR-10 progreso | `internal/output/output_test.go::TestProgress_*` (5 tests), `TestRun_ProgressCountsEveryObject` + emulador con pty y sin pty | (a) pty: 242 `\r` sobre 60 objetos, porcentaje monótono hasta `100% (60/60 objects)`; (b) `stderr` a pipe: una línea cada 10%, cero `\r`, final `4/4 objects (100%)`. La barra se borra antes de cada match o warning y se redibuja después | ✅ |
+| VC-12 | FR-12 gzip | `TestProcessObject_GzipIsDetectedByContentNotName`, `TestProcessObject_PlainTextNamedGzIsSearchedAsText`, `TestProcessObject_BinaryDetectionRunsOnDecompressedContent`, `TestProcessObject_CorruptGzipFails`, `TestRun_GzipObjectIsSearchedAndReportedByItsName` + emulador | los tres casos del VC, contra el binario real: (a) `gz/plain.log.gz` → `:2:gzip timeout inside`; (b) `gz/transcoded.log.gz` (con `Content-Encoding: gzip`, llega ya descomprimido) → `:1:transcoded timeout line`; (c) `gz/noext` → `:1:gzip without extension timeout`. Siempre bajo el nombre original; sin archivos temporales (el código no tiene ninguna llamada de escritura a disco) | ✅ |
+| VC-18 | BR-4 tope por objeto | (a) `TestRun_ObjectOverSizeLimitIsSkippedBeforeOpening`; (b) `TestProcessObject_ObjectSizeLimitCutsExpandingGzip`, `TestRun_ExpandingGzipIsCutAtObjectLimit`; borde: `TestProcessObject_ObjectExactlyAtSizeLimitIsNotCut` + emulador | (a) `--max-object-size 40`: `logs/app1.log` (61 bytes) **nunca recibe un GET** en el log del emulador, warning, exit 2, el resto se procesa; (b) `bomb/bomb.gz` (~8 MiB descomprimido) con `--max-object-size 64k`: se imprime el match de la línea 1, se corta, warning, exit 2 | ✅ |
+| VC-19 | BR-5 tope acumulado | `TestProcessObject_TotalBudgetIsSharedAcrossObjects`, `TestRun_TotalSizeLimitStopsTheRun` + emulador | `--max-total-size 500` sobre 60 objetos: 18 GETs, el objeto 17 se corta a la mitad, los matches de los 17 anteriores se imprimen, warning de corrida incompleta, exit 2. Con `-c`, el objeto cortado no imprime un conteo parcial | ✅ |
+| VC-23 | NFR-3 reintentos | `internal/gcsclient/retry_test.go::TestRetry_*` (6 tests) + `TestProcessObject_MidReadErrorFailsObjectAndKeepsEarlierMatches`, `TestRun_MidReadFailurePrintsEarlierMatchesOnce` + emulador inyectando 503 | (a) 2×503 y después OK → recuperado, esperas de exactamente 500ms y 1s (reloj inyectado); (b) 503 persistente → **exactamente 3 GETs** en el log del emulador (lo que confirma además que el retry propio del SDK quedó desactivado), warning, exit 2; (c) 403/404 → 1 intento, sin espera; (d) corte a mitad de lectura → el match previo se imprime una sola vez, objeto fallido, sin reintento | ✅ |
+
+### Nota 3 — sin verificación contra GCS real todavía
+
+En la máquina donde se implementó la Iteración 2 no hay `gcloud` ni
+credenciales ADC, así que ningún VC de esta iteración se corrió contra el
+bucket de prueba real. El emulador cubre el binario y el SDK reales, pero no
+puede verificar:
+
+- que GCS real responda con los mismos códigos y encabezados que el
+  emulador (en particular el *decompressive transcoding* de VC-12 (b), que el
+  emulador imita según la documentación de GCS);
+- la regresión de VC-22 (memoria constante) con la descompresión gzip en el
+  camino, que depende de medir RSS contra objetos grandes reales;
+- la regresión de los VCs de la Iteración 1 contra el entorno real.
+
+Queda como tarea pendiente antes de dar la Iteración 2 por cerrada del todo.
+Los comandos para hacerlo están abajo.
+
+### Nota 4 — bug de la Iteración 1 encontrado en esta iteración
+
+`readLine` trataba **cualquier** error de lectura como fin de archivo. Si la
+conexión se cortaba a mitad de un objeto, el objeto se daba por leído
+completo, sin warning, la línea cortada a la mitad se matcheaba igual (en el
+test apareció `partial timeout li` como match), y la corrida terminaba con
+exit 0: una violación silenciosa de FR-9 y FR-8. Ningún VC de la Iteración 1
+lo detectó porque todos los fallos simulados ocurrían en `Open`, nunca a
+mitad de la lectura. Se escribió primero el test que lo reproduce
+(`TestProcessObject_MidReadErrorFailsObjectAndKeepsEarlierMatches`), se vio
+fallar, y después se corrigió.
+
+### Decisiones de spec tomadas durante esta iteración
+
+Registradas en `gcsgrep-spec.md` antes de implementar (commit `a4b5a6d`) o
+durante la implementación:
+
+- `-c` imprime también los objetos con `0`; los objetos salteados o
+  incompletos no imprimen conteo.
+- BR-4 aplica a todo objeto, comprimido o no, con chequeo previo por el
+  tamaño listado.
+- BR-5 corta también el objeto en curso.
+- gzip se detecta por la firma `1f 8b`, no por la extensión `.gz`.
+- NFR-3: 3 intentos con esperas de 500ms y 1s (la versión anterior listaba
+  3 esperas para 2 reintentos); se reintentan `List` y `Open`, nunca una
+  lectura en curso; también se reintentan 408 y 429, siguiendo la
+  clasificación del propio SDK.
+- `0` deshabilita `--max-object-size` y `--max-total-size`; los tamaños
+  aceptan sufijos `KiB`/`MiB`/`GiB`.
+- FR-10 sin TTY: una línea cada 10% de los objetos.
+
+### Cómo se ejercita todo
+
+```bash
+cd gcsgrep
+go vet ./...
+go test ./...                             # 59 tests unitarios
+go build -o /tmp/gcsgrep ./cmd/gcsgrep
+
+BUCKET=<test-bucket>   # contra GCS real (pendiente, ver nota 3)
+
+# VC-3: color solo con TTY
+script -qec "/tmp/gcsgrep timeout gs://${BUCKET}/logs/" /dev/null | cat -v   # ^[[01;31m alrededor del match
+/tmp/gcsgrep timeout "gs://${BUCKET}/logs/" > out.txt; grep -c $'\x1b' out.txt   # 0
+
+# VC-5 / VC-6 / VC-7
+/tmp/gcsgrep -l timeout "gs://${BUCKET}/logs/"
+/tmp/gcsgrep -c timeout "gs://${BUCKET}/logs/"
+/tmp/gcsgrep -l -c timeout "gs://${BUCKET}/logs/"; echo $?   # 2
+
+# VC-10: con TTY (barra) y con stderr redirigido (líneas)
+script -qec "/tmp/gcsgrep --max 0 timeout gs://${BUCKET}/" /dev/null
+/tmp/gcsgrep timeout "gs://${BUCKET}/" 2> progress.log; grep -c $'\r' progress.log   # 0
+
+# VC-12: los tres casos de gzip (subir antes los objetos de prueba)
+gsutil cp app.log.gz "gs://${BUCKET}/gz/plain.log.gz"
+gsutil -h "Content-Encoding:gzip" cp app.log.gz "gs://${BUCKET}/gz/transcoded.log.gz"
+gsutil cp app.log.gz "gs://${BUCKET}/gz/noext"
+/tmp/gcsgrep timeout "gs://${BUCKET}/gz/"
+
+# VC-18 / VC-19: límites bajos para que corra rápido
+/tmp/gcsgrep --max-object-size 1k timeout "gs://${BUCKET}/"
+/tmp/gcsgrep --max-total-size 10MiB timeout "gs://${BUCKET}/"
+
+# VC-23: requiere inyectar fallos; se cubre con los tests unitarios y el
+# emulador (GCS real no permite provocar 503 a pedido).
+```
+
+### Qué mirar en esta tabla
+
+- **Hay una columna de estado honesta sobre el nivel de evidencia:** todo pasa
+  en tests unitarios y contra el binario real con emulador, pero nada se corrió
+  todavía contra GCS real, y eso está dicho en el resumen, no escondido.
+- **Los tests no se asumieron correctos:** el de VC-5 se probó rompiendo el
+  código a propósito (mutación) para confirmar que falla, y dos tests fallaron
+  de verdad durante la implementación y encontraron bugs (el de la nota 4, y
+  que la línea final de progreso no salía si la corrida se cortaba a mitad de
+  un tramo del 10%).
+- **VC-23 (b) se verificó contando requests HTTP reales**, no solo llamadas
+  a una interfaz: eso es lo que prueba que no hay dos políticas de reintento
+  apiladas.
