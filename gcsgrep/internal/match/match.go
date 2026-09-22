@@ -30,3 +30,9 @@ func New(pattern string, ignoreCase bool) (*Matcher, error) {
 func (m *Matcher) MatchString(line string) bool {
 	return m.re.MatchString(line)
 }
+
+// FindAllIndex returns the [start, end) byte offsets of every
+// non-overlapping match in line, for highlighting (FR-3).
+func (m *Matcher) FindAllIndex(line string) [][]int {
+	return m.re.FindAllStringIndex(line, -1)
+}

@@ -8,13 +8,28 @@ package output
 import (
 	"fmt"
 	"io"
+	"strings"
 )
 
 // Writer routes matches to stdout and diagnostics to stderr.
 type Writer struct {
 	Stdout io.Writer
 	Stderr io.Writer
+
+	// Color highlights results with ANSI colors, like grep --color=auto.
+	// main sets it only when stdout is a terminal (FR-3): escape codes in
+	// a file or a pipe would corrupt what a script parses.
+	Color bool
 }
+
+// ANSI SGR sequences, matching GNU grep's default colors.
+const (
+	colorObject  = "\x1b[35m"    // magenta
+	colorLineNum = "\x1b[32m"    // green
+	colorSep     = "\x1b[36m"    // cyan
+	colorMatch   = "\x1b[01;31m" // bold red
+	colorReset   = "\x1b[m"
+)
 
 // New builds a Writer over the given streams.
 func New(stdout, stderr io.Writer) *Writer {
@@ -22,10 +37,39 @@ func New(stdout, stderr io.Writer) *Writer {
 }
 
 // Match prints one matching line in gcsgrep's default format:
-// object:line:text (FR-3, simplified for Iteration 1 — always plain text,
-// no TTY color detection yet; -n's line number is always included).
-func (w *Writer) Match(object string, lineNum int, line string) {
-	fmt.Fprintf(w.Stdout, "%s:%d:%s\n", object, lineNum, line)
+// object:line:text (FR-3; -n's line number is always included). With
+// Color, each span of line (as returned by match.FindAllIndex) is
+// highlighted.
+func (w *Writer) Match(object string, lineNum int, line string, spans [][]int) {
+	if !w.Color {
+		fmt.Fprintf(w.Stdout, "%s:%d:%s\n", object, lineNum, line)
+		return
+	}
+	sep := colorSep + ":" + colorReset
+	fmt.Fprintf(w.Stdout, "%s%s%s%s%s%d%s%s%s\n",
+		colorObject, object, colorReset, sep,
+		colorLineNum, lineNum, colorReset, sep,
+		highlight(line, spans))
+}
+
+// highlight wraps each non-empty span of line in the match color. Empty
+// spans (a pattern like "x*" matches the empty string) have nothing to
+// color and are skipped.
+func highlight(line string, spans [][]int) string {
+	var b strings.Builder
+	prev := 0
+	for _, sp := range spans {
+		if sp[0] == sp[1] {
+			continue
+		}
+		b.WriteString(line[prev:sp[0]])
+		b.WriteString(colorMatch)
+		b.WriteString(line[sp[0]:sp[1]])
+		b.WriteString(colorReset)
+		prev = sp[1]
+	}
+	b.WriteString(line[prev:])
+	return b.String()
 }
 
 // ObjectName prints just the name of an object that matched, once per

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 
+	"golang.org/x/term"
+
 	"gcsgrep/internal/cli"
 	"gcsgrep/internal/gcsclient"
 	"gcsgrep/internal/match"
@@ -22,6 +24,7 @@ func main() {
 
 func run(argv []string) int {
 	w := output.New(os.Stdout, os.Stderr)
+	w.Color = isTerminal(os.Stdout)
 
 	args, err := cli.Parse(argv)
 	if err != nil {
@@ -55,6 +58,12 @@ func run(argv []string) int {
 	}
 
 	return scanner.Run(ctx, client, cfg, m, w)
+}
+
+// isTerminal is the isatty check behind FR-3's color and FR-10's progress
+// style: true for a terminal, false for a file, a pipe, or /dev/null.
+func isTerminal(f *os.File) bool {
+	return term.IsTerminal(int(f.Fd()))
 }
 
 // outputMode maps the -l/-c flags to the reader mode. cli.Parse already

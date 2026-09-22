@@ -135,7 +135,7 @@ func Run(ctx context.Context, client gcsclient.Client, cfg Config, m *match.Matc
 			}
 		default:
 			for _, lm := range res.Matches {
-				w.Match(res.Object, lm.LineNum, lm.Text)
+				w.Match(res.Object, lm.LineNum, lm.Text, lm.Spans)
 			}
 		}
 

@@ -49,6 +49,9 @@ const (
 type LineMatch struct {
 	LineNum int
 	Text    string
+	// Spans are the [start, end) byte offsets of each match within Text,
+	// used to highlight them (FR-3).
+	Spans [][]int
 }
 
 // ObjectResult is the outcome of processing a single object. Skipped means
@@ -166,7 +169,7 @@ func ProcessObject(stream io.Reader, objectName string, m *match.Matcher, opts O
 		case ModeList:
 			return res
 		case ModeLines:
-			res.Matches = append(res.Matches, LineMatch{LineNum: lineNum, Text: line})
+			res.Matches = append(res.Matches, LineMatch{LineNum: lineNum, Text: line, Spans: m.FindAllIndex(line)})
 		}
 	}
 	return res
