@@ -47,6 +47,10 @@ func run(argv []string) int {
 		Prefix:     args.Prefix,
 		MaxObjects: args.MaxObjects,
 		Mode:       outputMode(args),
+
+		MaxObjectSize: args.MaxObjectSize,
+		MaxTotalSize:  args.MaxTotalSize,
+		MaxLineSize:   int(args.MaxLineSize),
 	}
 
 	return scanner.Run(ctx, client, cfg, m, w)

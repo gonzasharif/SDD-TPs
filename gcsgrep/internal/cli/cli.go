@@ -1,5 +1,6 @@
 // Package cli parses gcsgrep's argv into a structured Args value. Iteration
-// 2's surface is: gcsgrep [-i] [-n] [-l | -c] [--max N] PATTERN
+// 2's surface is: gcsgrep [-i] [-n] [-l | -c] [--max N] [--max-object-size
+// SIZE] [--max-total-size SIZE] [--max-line-size SIZE] PATTERN
 // gs://bucket[/prefix].
 package cli
 
@@ -7,8 +8,10 @@ import (
 	"flag"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
+	"gcsgrep/internal/reader"
 	"gcsgrep/internal/scanner"
 )
 
@@ -23,9 +26,14 @@ type Args struct {
 	// (FR-7): Parse never returns both set.
 	ListOnly  bool
 	CountOnly bool
+	// Size limits in bytes: BR-4 per object, BR-5 per run (0 disables
+	// either), and FR-15's line buffer (always > 0).
+	MaxObjectSize int64
+	MaxTotalSize  int64
+	MaxLineSize   int64
 }
 
-const usage = "usage: gcsgrep [-i] [-l | -c] [--max N] PATTERN gs://bucket/prefix"
+const usage = "usage: gcsgrep [-i] [-l | -c] [--max N] [--max-object-size SIZE] [--max-total-size SIZE] [--max-line-size SIZE] PATTERN gs://bucket/prefix"
 
 // Parse parses argv (os.Args[1:]) into Args. On a usage error it returns a
 // message already meant for the user, matching the rest of gcsgrep's
@@ -42,6 +50,12 @@ func Parse(argv []string) (Args, error) {
 	listOnly := fs.Bool("l", false, "print only the names of objects with at least one match")
 	countOnly := fs.Bool("c", false, "print the number of matching lines per object")
 	maxObjects := fs.Int("max", scanner.DefaultMaxObjects, "cap on the number of objects to scan under the prefix (0 disables the guardrail)")
+	maxObjectSize := sizeValue(scanner.DefaultMaxObjectSize)
+	fs.Var(&maxObjectSize, "max-object-size", "cap on the bytes read from a single object, decompressed (0 disables it)")
+	maxTotalSize := sizeValue(scanner.DefaultMaxTotalSize)
+	fs.Var(&maxTotalSize, "max-total-size", "cap on the bytes read in the whole run, decompressed (0 disables it)")
+	maxLineSize := sizeValue(reader.DefaultMaxLineSize)
+	fs.Var(&maxLineSize, "max-line-size", "longest line that is matched; longer lines are skipped")
 
 	if err := fs.Parse(argv); err != nil {
 		return Args{}, fmt.Errorf("%s (%v)", usage, err)
@@ -51,6 +65,12 @@ func Parse(argv []string) (Args, error) {
 	// usage error can never cost a single API call (VC-7).
 	if *listOnly && *countOnly {
 		return Args{}, fmt.Errorf("-l and -c are mutually exclusive; %s", usage)
+	}
+
+	// A zero line buffer can't hold any line, so unlike the other two
+	// limits it can't mean "disabled".
+	if maxLineSize <= 0 {
+		return Args{}, fmt.Errorf("--max-line-size must be greater than 0; %s", usage)
 	}
 
 	rest := fs.Args()
@@ -71,6 +91,10 @@ func Parse(argv []string) (Args, error) {
 		MaxObjects: *maxObjects,
 		ListOnly:   *listOnly,
 		CountOnly:  *countOnly,
+
+		MaxObjectSize: int64(maxObjectSize),
+		MaxTotalSize:  int64(maxTotalSize),
+		MaxLineSize:   int64(maxLineSize),
 	}, nil
 }
 
@@ -99,3 +123,38 @@ func parseLocation(location string) (bucket, prefix string, err error) {
 type discard struct{}
 
 func (discard) Write(p []byte) (int, error) { return len(p), nil }
+
+// sizeValue is a flag.Value for byte sizes: a plain number of bytes, or a
+// number with a binary suffix (k/KiB, m/MiB, g/GiB, case-insensitive),
+// e.g. "250MiB" or "10k".
+type sizeValue int64
+
+var sizeSuffixes = []struct {
+	suffix     string
+	multiplier int64
+}{
+	// Longest suffixes first, so "kib" is not read as "k" + "ib".
+	{"kib", 1 << 10}, {"mib", 1 << 20}, {"gib", 1 << 30},
+	{"k", 1 << 10}, {"m", 1 << 20}, {"g", 1 << 30},
+}
+
+func (v *sizeValue) String() string { return strconv.FormatInt(int64(*v), 10) }
+
+func (v *sizeValue) Set(s string) error {
+	number, multiplier := strings.ToLower(strings.TrimSpace(s)), int64(1)
+	for _, sfx := range sizeSuffixes {
+		if strings.HasSuffix(number, sfx.suffix) {
+			number, multiplier = strings.TrimSuffix(number, sfx.suffix), sfx.multiplier
+			break
+		}
+	}
+	n, err := strconv.ParseInt(number, 10, 64)
+	if err != nil || n < 0 {
+		return fmt.Errorf("invalid size %q: want a number of bytes, optionally with a KiB/MiB/GiB suffix", s)
+	}
+	if n > (1<<63-1)/multiplier {
+		return fmt.Errorf("invalid size %q: too large", s)
+	}
+	*v = sizeValue(n * multiplier)
+	return nil
+}

@@ -362,7 +362,9 @@ costo fuera de proporción — sea un `.gz` que se expande de forma
 desproporcionada (deliberada o accidentalmente) o simplemente un objeto de
 texto enorme.
 
-**Excepciones:** configurable con `--max-object-size`.
+**Excepciones:** configurable con `--max-object-size` (en bytes, o con sufijo
+`KiB`/`MiB`/`GiB`, ej. `--max-object-size 500MiB`); `--max-object-size 0` lo deshabilita,
+igual que `--max 0` en BR-3.
 
 **VC-18:** Dos escenarios, con límite bajo simulado vía `--max-object-size`
 para acelerar el test. (a) Objeto de texto plano cuyo tamaño listado supera
@@ -383,7 +385,9 @@ se termina informando lo encontrado hasta ahí.
 **Fundamento:** control de costo total de la corrida completa (no solo por
 objeto individual) — leer de GCS se cobra por bytes.
 
-**Excepciones:** configurable con `--max-total-size`.
+**Excepciones:** configurable con `--max-total-size` (en bytes, o con sufijo
+`KiB`/`MiB`/`GiB`, ej. `--max-total-size 500MiB`); `--max-total-size 0` lo deshabilita,
+igual que `--max 0` en BR-3.
 
 **VC-19:** Prefijo con suficientes objetos para superar un
 `--max-total-size` bajo (ej. 10 MiB, para que el test corra rápido).

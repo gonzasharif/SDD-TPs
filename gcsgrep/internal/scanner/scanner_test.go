@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"io"
@@ -255,3 +256,165 @@ func TestRun_CountModeWithNoMatchesExitsNoMatch(t *testing.T) {
 		t.Errorf("stdout = %q, want %q", stdout.String(), want)
 	}
 }
+
+func gzipped(t *testing.T, content string) string {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write([]byte(content)); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+	return buf.String()
+}
+
+// VC-12: matches inside a gzip object are reported under the object's own
+// name, next to plain-text objects in the same prefix.
+func TestRun_GzipObjectIsSearchedAndReportedByItsName(t *testing.T) {
+	client := &fakeClient{
+		objects: map[string]string{
+			"logs/app1.log":    "all good\n",
+			"logs/app2.log.gz": gzipped(t, "ok\nconnection timeout\n"),
+		},
+		listedNames: []string{"logs/app1.log", "logs/app2.log.gz"},
+	}
+	var stdout, stderr bytes.Buffer
+	w := output.New(&stdout, &stderr)
+
+	code := Run(context.Background(), client, Config{Bucket: "b", MaxObjects: DefaultMaxObjects}, mustMatcher(t, "timeout"), w)
+
+	if code != ExitMatch {
+		t.Errorf("exit code = %d, want %d (ExitMatch); stderr: %q", code, ExitMatch, stderr.String())
+	}
+	if want := "logs/app2.log.gz:2:connection timeout\n"; stdout.String() != want {
+		t.Errorf("stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+// VC-18 (a): a plain object whose listed size is over --max-object-size
+// is skipped without being opened; the run goes on and exits 2.
+func TestRun_ObjectOverSizeLimitIsSkippedBeforeOpening(t *testing.T) {
+	opened := map[string]bool{}
+	client := &countingClient{
+		fakeClient: fakeClient{
+			objects: map[string]string{
+				"logs/big.log":   strings.Repeat("timeout\n", 100),
+				"logs/small.log": "timeout\n",
+			},
+			listedNames: []string{"logs/big.log", "logs/small.log"},
+		},
+		opened: opened,
+	}
+	var stdout, stderr bytes.Buffer
+	w := output.New(&stdout, &stderr)
+
+	code := Run(context.Background(), client, Config{Bucket: "b", MaxObjects: DefaultMaxObjects, MaxObjectSize: 100}, mustMatcher(t, "timeout"), w)
+
+	if code != ExitError {
+		t.Errorf("exit code = %d, want %d (ExitError)", code, ExitError)
+	}
+	if opened["logs/big.log"] {
+		t.Errorf("the object over the limit should never be opened")
+	}
+	if want := "logs/small.log:1:timeout\n"; stdout.String() != want {
+		t.Errorf("stdout = %q, want %q (the rest of the run goes on)", stdout.String(), want)
+	}
+	if !strings.Contains(stderr.String(), "logs/big.log") {
+		t.Errorf("stderr should warn about the skipped object: %q", stderr.String())
+	}
+}
+
+// VC-18 (b): a small gzip that expands past the limit is cut mid-read;
+// its earlier matches are printed, the run goes on, and it exits 2.
+func TestRun_ExpandingGzipIsCutAtObjectLimit(t *testing.T) {
+	client := &fakeClient{
+		objects: map[string]string{
+			"logs/bomb.gz":   gzipped(t, "timeout early\n"+strings.Repeat("filler line\n", 100000)),
+			"logs/small.log": "timeout\n",
+		},
+		listedNames: []string{"logs/bomb.gz", "logs/small.log"},
+	}
+	var stdout, stderr bytes.Buffer
+	w := output.New(&stdout, &stderr)
+
+	code := Run(context.Background(), client, Config{Bucket: "b", MaxObjects: DefaultMaxObjects, MaxObjectSize: 64 << 10}, mustMatcher(t, "timeout"), w)
+
+	if code != ExitError {
+		t.Errorf("exit code = %d, want %d (ExitError)", code, ExitError)
+	}
+	if want := "logs/bomb.gz:1:timeout early\nlogs/small.log:1:timeout\n"; stdout.String() != want {
+		t.Errorf("stdout = %q, want %q", stdout.String(), want)
+	}
+	if !strings.Contains(stderr.String(), "logs/bomb.gz: stopped reading at the per-object limit") {
+		t.Errorf("stderr should warn about the cut: %q", stderr.String())
+	}
+}
+
+// VC-19: crossing --max-total-size cuts the object being read, opens no
+// further object, keeps the matches found so far, and exits 2.
+func TestRun_TotalSizeLimitStopsTheRun(t *testing.T) {
+	opened := map[string]bool{}
+	chunk := strings.Repeat("timeout\n", 1000) // 8000 bytes
+	client := &countingClient{
+		fakeClient: fakeClient{
+			objects:     map[string]string{"a.log": chunk, "b.log": chunk, "c.log": chunk},
+			listedNames: []string{"a.log", "b.log", "c.log"},
+		},
+		opened: opened,
+	}
+	var stdout, stderr bytes.Buffer
+	w := output.New(&stdout, &stderr)
+
+	code := Run(context.Background(), client, Config{Bucket: "b", MaxObjects: DefaultMaxObjects, MaxTotalSize: 12000, Mode: reader.ModeCount}, mustMatcher(t, "timeout"), w)
+
+	if code != ExitError {
+		t.Errorf("exit code = %d, want %d (ExitError)", code, ExitError)
+	}
+	if opened["c.log"] {
+		t.Errorf("no object should be opened after the total limit is reached")
+	}
+	// b.log was cut mid-object, so its partial count is not printed.
+	if want := "a.log:1000\n"; stdout.String() != want {
+		t.Errorf("stdout = %q, want %q", stdout.String(), want)
+	}
+	if !strings.Contains(stderr.String(), "total size limit") {
+		t.Errorf("stderr should warn that the run was cut: %q", stderr.String())
+	}
+}
+
+// FR-9 / NFR-3 (d): a connection dropped mid-object prints the matches
+// found before the drop exactly once, then fails the object with exit 2.
+func TestRun_MidReadFailurePrintsEarlierMatchesOnce(t *testing.T) {
+	client := &droppingClient{content: "timeout before the drop\n" + strings.Repeat("filler\n", 2000)}
+	var stdout, stderr bytes.Buffer
+	w := output.New(&stdout, &stderr)
+
+	code := Run(context.Background(), client, Config{Bucket: "b", MaxObjects: DefaultMaxObjects}, mustMatcher(t, "timeout"), w)
+
+	if code != ExitError {
+		t.Errorf("exit code = %d, want %d (ExitError)", code, ExitError)
+	}
+	if want := "logs/app.log:1:timeout before the drop\n"; stdout.String() != want {
+		t.Errorf("stdout = %q, want %q", stdout.String(), want)
+	}
+	if !strings.Contains(stderr.String(), "connection reset") {
+		t.Errorf("stderr should report the failure: %q", stderr.String())
+	}
+}
+
+// droppingClient lists a single object whose stream fails after content.
+type droppingClient struct{ content string }
+
+func (d *droppingClient) List(ctx context.Context, bucket, prefix string) ([]gcsclient.ObjectInfo, error) {
+	return []gcsclient.ObjectInfo{{Name: "logs/app.log", Size: int64(len(d.content))}}, nil
+}
+
+func (d *droppingClient) Open(ctx context.Context, bucket, object string) (io.ReadCloser, error) {
+	return io.NopCloser(io.MultiReader(strings.NewReader(d.content), failingStream{errors.New("connection reset by peer")})), nil
+}
+
+type failingStream struct{ err error }
+
+func (e failingStream) Read([]byte) (int, error) { return 0, e.err }

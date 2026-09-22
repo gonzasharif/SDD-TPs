@@ -125,3 +125,50 @@ func TestParse_ListAndCountAreMutuallyExclusive(t *testing.T) {
 		}
 	}
 }
+
+// BR-4/BR-5/FR-15: size flags default to the spec's values and accept
+// plain bytes or KiB/MiB/GiB suffixes.
+func TestParse_SizeFlags(t *testing.T) {
+	args, err := Parse([]string{"timeout", "gs://logs/"})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if args.MaxObjectSize != 250<<20 || args.MaxTotalSize != 2<<30 || args.MaxLineSize != 1<<20 {
+		t.Errorf("defaults = %d/%d/%d, want 250 MiB / 2 GiB / 1 MiB", args.MaxObjectSize, args.MaxTotalSize, args.MaxLineSize)
+	}
+
+	cases := []struct {
+		value string
+		want  int64
+	}{
+		{"1234", 1234},
+		{"10k", 10 << 10},
+		{"10KiB", 10 << 10},
+		{"250MiB", 250 << 20},
+		{"2g", 2 << 30},
+		{"0", 0},
+	}
+	for _, tc := range cases {
+		args, err := Parse([]string{"--max-object-size", tc.value, "timeout", "gs://logs/"})
+		if err != nil {
+			t.Errorf("--max-object-size %s: %v", tc.value, err)
+			continue
+		}
+		if args.MaxObjectSize != tc.want {
+			t.Errorf("--max-object-size %s = %d, want %d", tc.value, args.MaxObjectSize, tc.want)
+		}
+	}
+}
+
+func TestParse_RejectsInvalidSizes(t *testing.T) {
+	for _, argv := range [][]string{
+		{"--max-total-size", "abc", "timeout", "gs://logs/"},
+		{"--max-total-size", "-5", "timeout", "gs://logs/"},
+		{"--max-object-size", "10TiB", "timeout", "gs://logs/"},
+		{"--max-line-size", "0", "timeout", "gs://logs/"},
+	} {
+		if _, err := Parse(argv); err == nil {
+			t.Errorf("Parse(%v) should fail", argv)
+		}
+	}
+}
