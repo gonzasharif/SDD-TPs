@@ -450,8 +450,9 @@ al tamaño del objeto) — ej. diferencia ≤ 20 MiB.
 
 ### NFR-3 — Comportamiento ante fallos de red
 
-**Umbral:** un error transitorio (timeout, conexión reseteada, 5xx) al
-**abrir** un objeto se reintenta hasta 3 intentos en total, con backoff
+**Umbral:** un error transitorio (timeout, conexión reseteada, 5xx, 408,
+429) al **listar** el prefijo o al **abrir** un objeto —momentos en los que
+todavía no se imprimió nada— se reintenta hasta 3 intentos en total, con backoff
 exponencial entre intentos (500ms antes del 2º, 1s antes del 3º, ± 20% de
 jitter). Tras 3 fallos, el objeto se marca como fallido. Errores permanentes
 (403, 404) no se reintentan.

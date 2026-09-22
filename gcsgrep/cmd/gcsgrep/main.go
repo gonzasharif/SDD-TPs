@@ -41,6 +41,7 @@ func run(argv []string) int {
 		w.Error("could not initialize the GCS client: %v", err)
 		return scanner.ExitError
 	}
+	client = gcsclient.WithRetries(client)
 
 	cfg := scanner.Config{
 		Bucket:     args.Bucket,

@@ -34,7 +34,8 @@ type gcsClient struct {
 	sc *storage.Client
 }
 
-// New builds a Client authenticated via Application Default Credentials —
+// New builds a Client authenticated via Application Default Credentials,
+// with no retries of its own (wrap it with WithRetries for NFR-3) —
 // gcsgrep never accepts a service-account key file (decision recorded in
 // gcsgrep-requirements.md).
 func New(ctx context.Context) (Client, error) {
@@ -42,6 +43,10 @@ func New(ctx context.Context) (Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The SDK's own retries are turned off so that the only retry policy
+	// in effect is NFR-3's (WithRetries). Otherwise the two would stack,
+	// and the SDK would also transparently reopen a reader mid-read.
+	sc.SetRetry(storage.WithPolicy(storage.RetryNever))
 	return &gcsClient{sc: sc}, nil
 }
 
