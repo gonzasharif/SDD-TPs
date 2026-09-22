@@ -25,6 +25,10 @@ func main() {
 func run(argv []string) int {
 	w := output.New(os.Stdout, os.Stderr)
 	w.Color = isTerminal(os.Stdout)
+	w.Progress = output.ProgressLines
+	if isTerminal(os.Stderr) {
+		w.Progress = output.ProgressBar
+	}
 
 	args, err := cli.Parse(argv)
 	if err != nil {

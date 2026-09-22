@@ -190,7 +190,8 @@ corrida.
   progreso con porcentaje (`objetos procesados / total`) que se redibuja en
   el lugar (como `git clone` o `brew install`); si `stderr` no es una
   terminal (redirigido a archivo o pipe), se emiten en cambio líneas de
-  progreso simples a intervalos regulares, sin redibujado, para no ensuciar
+  progreso simples cada 10% de los objetos procesados (más una línea final
+  si la corrida se corta antes, por BR-5), sin redibujado, para no ensuciar
   un log con secuencias de control.
 
 **VC-10:** Dos escenarios. (a) Con `stderr` conectado a un pty (o forzando

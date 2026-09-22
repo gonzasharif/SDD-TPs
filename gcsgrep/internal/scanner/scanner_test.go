@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -418,3 +419,27 @@ func (d *droppingClient) Open(ctx context.Context, bucket, object string) (io.Re
 type failingStream struct{ err error }
 
 func (e failingStream) Read([]byte) (int, error) { return 0, e.err }
+
+// FR-10: progress counts every object, whatever happened to it (matched,
+// unreadable, binary, over the size limit), and reaches 100%.
+func TestRun_ProgressCountsEveryObject(t *testing.T) {
+	objects := map[string]string{}
+	var names []string
+	for i := range 10 {
+		name := fmt.Sprintf("logs/%02d.log", i)
+		objects[name] = "timeout\n"
+		names = append(names, name)
+	}
+	objects["logs/03.log"] = "\x00binary"
+	objects["logs/07.log"] = strings.Repeat("x", 1000)
+	client := &fakeClient{objects: objects, listedNames: names, unreadable: map[string]bool{"logs/05.log": true}}
+	var stdout, stderr bytes.Buffer
+	w := output.New(&stdout, &stderr)
+	w.Progress = output.ProgressLines
+
+	Run(context.Background(), client, Config{Bucket: "b", MaxObjects: DefaultMaxObjects, MaxObjectSize: 100}, mustMatcher(t, "timeout"), w)
+
+	if !strings.HasSuffix(stderr.String(), "gcsgrep: progress: 10/10 objects (100%)\n") {
+		t.Errorf("progress should end at 10/10: %q", stderr.String())
+	}
+}

@@ -20,6 +20,12 @@ type Writer struct {
 	// main sets it only when stdout is a terminal (FR-3): escape codes in
 	// a file or a pipe would corrupt what a script parses.
 	Color bool
+
+	// Progress selects how FR-10's progress is shown on stderr; main
+	// picks the bar or plain lines depending on whether stderr is a
+	// terminal.
+	Progress ProgressStyle
+	progress progress
 }
 
 // ANSI SGR sequences, matching GNU grep's default colors.
@@ -41,6 +47,8 @@ func New(stdout, stderr io.Writer) *Writer {
 // Color, each span of line (as returned by match.FindAllIndex) is
 // highlighted.
 func (w *Writer) Match(object string, lineNum int, line string, spans [][]int) {
+	w.clearBar()
+	defer w.drawBar()
 	if !w.Color {
 		fmt.Fprintf(w.Stdout, "%s:%d:%s\n", object, lineNum, line)
 		return
@@ -75,12 +83,16 @@ func highlight(line string, spans [][]int) string {
 // ObjectName prints just the name of an object that matched, once per
 // object (FR-5, -l).
 func (w *Writer) ObjectName(object string) {
+	w.clearBar()
+	defer w.drawBar()
 	fmt.Fprintln(w.Stdout, object)
 }
 
 // Count prints an object's number of matching lines as object:count
 // (FR-6, -c), including objects with zero matches.
 func (w *Writer) Count(object string, count int) {
+	w.clearBar()
+	defer w.drawBar()
 	fmt.Fprintf(w.Stdout, "%s:%d\n", object, count)
 }
 
@@ -88,11 +100,15 @@ func (w *Writer) Count(object string, count int) {
 // object, a binary skip, a long line skip) that must not abort the run
 // (FR-9, FR-11, FR-15).
 func (w *Writer) Warning(format string, args ...any) {
+	w.clearBar()
+	defer w.drawBar()
 	fmt.Fprintf(w.Stderr, "gcsgrep: warning: "+format+"\n", args...)
 }
 
 // Error reports a condition that aborts the run entirely (a usage error, a
 // guardrail hit before any content was read, or a fatal setup failure).
 func (w *Writer) Error(format string, args ...any) {
+	w.clearBar()
+	defer w.drawBar()
 	fmt.Fprintf(w.Stderr, "gcsgrep: error: "+format+"\n", args...)
 }
