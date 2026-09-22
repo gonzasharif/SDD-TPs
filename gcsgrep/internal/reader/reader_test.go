@@ -1,6 +1,7 @@
 package reader
 
 import (
+	"io"
 	"strings"
 	"testing"
 
@@ -154,5 +155,61 @@ func TestProcessObject_LineExactlyAtLimitIsNotTruncated(t *testing.T) {
 	}
 	if len(res.Matches) != 1 || res.Matches[0].LineNum != 1 || res.Matches[0].Text != line {
 		t.Errorf("expected the line at the limit to match normally and in full: %+v", res.Matches)
+	}
+}
+
+// countingReader records how many bytes were pulled from the underlying
+// reader, so VC-5 can assert that -l stops reading early.
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
+}
+
+// VC-5: with -l, a large object whose first line matches is read only up
+// to that match (plus whatever the read buffers already pulled in), not
+// in full.
+func TestProcessObject_ListModeStopsAtFirstMatch(t *testing.T) {
+	const objectSize = 10 << 20
+	content := "connection timeout after 30s\n" + strings.Repeat("filler line with no match\n", objectSize/26)
+	stream := &countingReader{r: strings.NewReader(content)}
+	m := mustMatcher(t, "timeout", false)
+
+	res := ProcessObject(stream, "logs/huge.log", m, Options{Mode: ModeList})
+
+	if res.Failed || res.Skipped {
+		t.Fatalf("should not fail or be skipped: %+v", res)
+	}
+	if res.MatchCount != 1 {
+		t.Errorf("MatchCount = %d, want 1", res.MatchCount)
+	}
+	if len(res.Matches) != 0 {
+		t.Errorf("-l should not collect line text: %+v", res.Matches)
+	}
+	// The binary sniff (8 KiB) plus one bufio chunk (64 KiB) is the most
+	// that can be read before the first line is matched.
+	if limit := int64(sniffSize + chunkSize); stream.n > limit {
+		t.Errorf("read %d bytes of a %d-byte object, want at most %d (early cut)", stream.n, len(content), limit)
+	}
+}
+
+// VC-6: with -c, every matching line is counted and none of their text is
+// kept.
+func TestProcessObject_CountModeCountsEveryMatch(t *testing.T) {
+	content := "timeout 1\nok\ntimeout 2\nok\ntimeout 3"
+	m := mustMatcher(t, "timeout", false)
+
+	res := ProcessObject(strings.NewReader(content), "logs/app.log", m, Options{Mode: ModeCount})
+
+	if res.MatchCount != 3 {
+		t.Errorf("MatchCount = %d, want 3", res.MatchCount)
+	}
+	if len(res.Matches) != 0 {
+		t.Errorf("-c should not collect line text: %+v", res.Matches)
 	}
 }

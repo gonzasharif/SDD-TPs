@@ -93,3 +93,35 @@ func TestParse_MaxObjectsDefaultAndOverride(t *testing.T) {
 		t.Errorf("--max 0 should disable the guardrail (MaxObjects=0), got %d", args.MaxObjects)
 	}
 }
+
+// FR-5/FR-6: -l and -c each parse on their own.
+func TestParse_ListAndCountFlags(t *testing.T) {
+	args, err := Parse([]string{"-l", "timeout", "gs://logs/"})
+	if err != nil {
+		t.Fatalf("Parse -l: %v", err)
+	}
+	if !args.ListOnly || args.CountOnly {
+		t.Errorf("-l should set only ListOnly: %+v", args)
+	}
+
+	args, err = Parse([]string{"-c", "timeout", "gs://logs/"})
+	if err != nil {
+		t.Fatalf("Parse -c: %v", err)
+	}
+	if !args.CountOnly || args.ListOnly {
+		t.Errorf("-c should set only CountOnly: %+v", args)
+	}
+}
+
+// VC-7: -l and -c together are a usage error. Parse runs before main
+// builds the GCS client, so rejecting here means zero API calls.
+func TestParse_ListAndCountAreMutuallyExclusive(t *testing.T) {
+	for _, argv := range [][]string{
+		{"-l", "-c", "timeout", "gs://logs/"},
+		{"-c", "-l", "timeout", "gs://logs/"},
+	} {
+		if _, err := Parse(argv); err == nil {
+			t.Errorf("Parse(%v) should reject -l together with -c", argv)
+		}
+	}
+}

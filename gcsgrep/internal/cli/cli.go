@@ -1,5 +1,6 @@
 // Package cli parses gcsgrep's argv into a structured Args value. Iteration
-// 1's surface is: gcsgrep [-i] [-n] [--max N] PATTERN gs://bucket[/prefix].
+// 2's surface is: gcsgrep [-i] [-n] [-l | -c] [--max N] PATTERN
+// gs://bucket[/prefix].
 package cli
 
 import (
@@ -18,7 +19,13 @@ type Args struct {
 	Prefix     string
 	IgnoreCase bool
 	MaxObjects int
+	// ListOnly (-l, FR-5) and CountOnly (-c, FR-6) are mutually exclusive
+	// (FR-7): Parse never returns both set.
+	ListOnly  bool
+	CountOnly bool
 }
+
+const usage = "usage: gcsgrep [-i] [-l | -c] [--max N] PATTERN gs://bucket/prefix"
 
 // Parse parses argv (os.Args[1:]) into Args. On a usage error it returns a
 // message already meant for the user, matching the rest of gcsgrep's
@@ -32,15 +39,23 @@ func Parse(argv []string) (Args, error) {
 	// always includes the line number (decision recorded in
 	// gcsgrep-requirements.md, "Decisiones tomadas" #4).
 	fs.Bool("n", true, "show line numbers (always on)")
+	listOnly := fs.Bool("l", false, "print only the names of objects with at least one match")
+	countOnly := fs.Bool("c", false, "print the number of matching lines per object")
 	maxObjects := fs.Int("max", scanner.DefaultMaxObjects, "cap on the number of objects to scan under the prefix (0 disables the guardrail)")
 
 	if err := fs.Parse(argv); err != nil {
-		return Args{}, fmt.Errorf("usage: gcsgrep [-i] [--max N] PATTERN gs://bucket/prefix (%v)", err)
+		return Args{}, fmt.Errorf("%s (%v)", usage, err)
+	}
+
+	// FR-7: rejected here, before main ever builds a GCS client, so a
+	// usage error can never cost a single API call (VC-7).
+	if *listOnly && *countOnly {
+		return Args{}, fmt.Errorf("-l and -c are mutually exclusive; %s", usage)
 	}
 
 	rest := fs.Args()
 	if len(rest) != 2 {
-		return Args{}, fmt.Errorf("usage: gcsgrep [-i] [--max N] PATTERN gs://bucket/prefix")
+		return Args{}, fmt.Errorf("%s", usage)
 	}
 
 	bucket, prefix, err := parseLocation(rest[1])
@@ -54,6 +69,8 @@ func Parse(argv []string) (Args, error) {
 		Prefix:     prefix,
 		IgnoreCase: *ignoreCase,
 		MaxObjects: *maxObjects,
+		ListOnly:   *listOnly,
+		CountOnly:  *countOnly,
 	}, nil
 }
 

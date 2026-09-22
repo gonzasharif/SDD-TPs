@@ -11,6 +11,7 @@ import (
 	"gcsgrep/internal/gcsclient"
 	"gcsgrep/internal/match"
 	"gcsgrep/internal/output"
+	"gcsgrep/internal/reader"
 )
 
 // fakeClient is an in-memory gcsclient.Client used to unit-test scanner
@@ -185,4 +186,72 @@ type countingClient struct {
 func (c *countingClient) Open(ctx context.Context, bucket, object string) (io.ReadCloser, error) {
 	c.opened[object] = true
 	return c.fakeClient.Open(ctx, bucket, object)
+}
+
+// FR-5: -l prints each matching object's name exactly once, with no line
+// number or text, and nothing for objects without a match.
+func TestRun_ListModePrintsOnlyMatchingObjectNames(t *testing.T) {
+	client := &fakeClient{
+		objects: map[string]string{
+			"logs/app1.log": "timeout one\ntimeout two\n",
+			"logs/app2.log": "all good\n",
+			"logs/app3.log": "another timeout\n",
+		},
+		listedNames: []string{"logs/app1.log", "logs/app2.log", "logs/app3.log"},
+	}
+	var stdout, stderr bytes.Buffer
+	w := output.New(&stdout, &stderr)
+
+	code := Run(context.Background(), client, Config{Bucket: "b", MaxObjects: DefaultMaxObjects, Mode: reader.ModeList}, mustMatcher(t, "timeout"), w)
+
+	if code != ExitMatch {
+		t.Errorf("exit code = %d, want %d (ExitMatch)", code, ExitMatch)
+	}
+	if want := "logs/app1.log\nlogs/app3.log\n"; stdout.String() != want {
+		t.Errorf("stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+// VC-6: -c prints object:count for every processed object, including
+// objects with zero matches, but not for skipped binaries — a 0 there
+// would claim the object was searched when it wasn't.
+func TestRun_CountModePrintsZeroCountsButNotSkippedObjects(t *testing.T) {
+	client := &fakeClient{
+		objects: map[string]string{
+			"logs/app1.log": "timeout 1\nok\ntimeout 2\ntimeout 3\n",
+			"logs/app2.log": "all good\n",
+			"logs/icon.png": "\x89PNG\x00\x00timeout",
+		},
+		listedNames: []string{"logs/app1.log", "logs/app2.log", "logs/icon.png"},
+	}
+	var stdout, stderr bytes.Buffer
+	w := output.New(&stdout, &stderr)
+
+	code := Run(context.Background(), client, Config{Bucket: "b", MaxObjects: DefaultMaxObjects, Mode: reader.ModeCount}, mustMatcher(t, "timeout"), w)
+
+	if code != ExitMatch {
+		t.Errorf("exit code = %d, want %d (ExitMatch)", code, ExitMatch)
+	}
+	if want := "logs/app1.log:3\nlogs/app2.log:0\n"; stdout.String() != want {
+		t.Errorf("stdout = %q, want %q", stdout.String(), want)
+	}
+	if !strings.Contains(stderr.String(), "logs/icon.png") {
+		t.Errorf("the skipped binary should still be reported on stderr: %q", stderr.String())
+	}
+}
+
+// FR-8 under -c: printing only zero counts is still "no match", exit 1.
+func TestRun_CountModeWithNoMatchesExitsNoMatch(t *testing.T) {
+	client := &fakeClient{objects: map[string]string{"logs/app2.log": "all good\n"}}
+	var stdout, stderr bytes.Buffer
+	w := output.New(&stdout, &stderr)
+
+	code := Run(context.Background(), client, Config{Bucket: "b", MaxObjects: DefaultMaxObjects, Mode: reader.ModeCount}, mustMatcher(t, "timeout"), w)
+
+	if code != ExitNoMatch {
+		t.Errorf("exit code = %d, want %d (ExitNoMatch)", code, ExitNoMatch)
+	}
+	if want := "logs/app2.log:0\n"; stdout.String() != want {
+		t.Errorf("stdout = %q, want %q", stdout.String(), want)
+	}
 }

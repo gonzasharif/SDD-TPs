@@ -39,6 +39,10 @@ type Config struct {
 	// MaxLineSize is forwarded to reader.Options (FR-15). Zero uses the
 	// reader's default.
 	MaxLineSize int
+
+	// Mode selects the output mode: every matching line (default), only
+	// the names of matching objects (-l), or a per-object count (-c).
+	Mode reader.Mode
 }
 
 // Run lists objects under cfg.Bucket/cfg.Prefix (FR-1, FR-2), applies the
@@ -70,7 +74,7 @@ func Run(ctx context.Context, client gcsclient.Client, cfg Config, m *match.Matc
 			continue
 		}
 
-		res := reader.ProcessObject(stream, obj.Name, m, reader.Options{MaxLineSize: cfg.MaxLineSize})
+		res := reader.ProcessObject(stream, obj.Name, m, reader.Options{MaxLineSize: cfg.MaxLineSize, Mode: cfg.Mode})
 		stream.Close()
 
 		if res.Failed {
@@ -85,9 +89,20 @@ func Run(ctx context.Context, client gcsclient.Client, cfg Config, m *match.Matc
 		if res.LongLineWarn {
 			w.Warning("%s: at least one line exceeded the buffer and was skipped without matching", res.Object)
 		}
-		for _, lm := range res.Matches {
+		if res.MatchCount > 0 {
 			matchFound = true
-			w.Match(res.Object, lm.LineNum, lm.Text)
+		}
+		switch cfg.Mode {
+		case reader.ModeList:
+			if res.MatchCount > 0 {
+				w.ObjectName(res.Object)
+			}
+		case reader.ModeCount:
+			w.Count(res.Object, res.MatchCount)
+		default:
+			for _, lm := range res.Matches {
+				w.Match(res.Object, lm.LineNum, lm.Text)
+			}
 		}
 	}
 

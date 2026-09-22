@@ -27,6 +27,21 @@ const (
 	DefaultMaxLineSize = 1 << 20
 )
 
+// Mode selects what ProcessObject collects from an object.
+type Mode int
+
+const (
+	// ModeLines collects every matching line (the default output format).
+	ModeLines Mode = iota
+	// ModeList stops reading at the first match (FR-5, -l): only whether
+	// the object matched matters, so reading the rest would be wasted
+	// bytes billed by GCS.
+	ModeList
+	// ModeCount reads the whole object and counts matching lines without
+	// keeping their text (FR-6, -c).
+	ModeCount
+)
+
 // LineMatch is one matching line found in an object.
 type LineMatch struct {
 	LineNum int
@@ -37,8 +52,14 @@ type LineMatch struct {
 // Failed, Skipped, or "matched normally" describes what happened; they are
 // mutually exclusive per object.
 type ObjectResult struct {
-	Object  string
+	Object string
+
+	// Matches holds every matching line in ModeLines. It stays empty in
+	// ModeList and ModeCount, which only need MatchCount.
 	Matches []LineMatch
+	// MatchCount is the number of matching lines found. In ModeList it is
+	// at most 1, since reading stops at the first match.
+	MatchCount int
 
 	// Skipped means the object was deliberately not searched (it's binary).
 	// This is expected filtering, not an error — FR-8 does not treat it as
@@ -63,6 +84,9 @@ type Options struct {
 	// it's treated as "too long" and skipped whole. Zero means
 	// DefaultMaxLineSize.
 	MaxLineSize int
+	// Mode selects what is collected per object. The zero value is
+	// ModeLines.
+	Mode Mode
 }
 
 // ProcessObject reads stream line by line, skips it whole if it looks
@@ -108,7 +132,14 @@ func ProcessObject(stream io.Reader, objectName string, m *match.Matcher, opts O
 			res.LongLineWarn = true
 			continue
 		}
-		if m.MatchString(line) {
+		if !m.MatchString(line) {
+			continue
+		}
+		res.MatchCount++
+		switch opts.Mode {
+		case ModeList:
+			return res
+		case ModeLines:
 			res.Matches = append(res.Matches, LineMatch{LineNum: lineNum, Text: line})
 		}
 	}

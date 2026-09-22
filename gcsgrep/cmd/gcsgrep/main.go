@@ -12,6 +12,7 @@ import (
 	"gcsgrep/internal/gcsclient"
 	"gcsgrep/internal/match"
 	"gcsgrep/internal/output"
+	"gcsgrep/internal/reader"
 	"gcsgrep/internal/scanner"
 )
 
@@ -45,7 +46,21 @@ func run(argv []string) int {
 		Bucket:     args.Bucket,
 		Prefix:     args.Prefix,
 		MaxObjects: args.MaxObjects,
+		Mode:       outputMode(args),
 	}
 
 	return scanner.Run(ctx, client, cfg, m, w)
+}
+
+// outputMode maps the -l/-c flags to the reader mode. cli.Parse already
+// guarantees at most one of them is set (FR-7).
+func outputMode(args cli.Args) reader.Mode {
+	switch {
+	case args.ListOnly:
+		return reader.ModeList
+	case args.CountOnly:
+		return reader.ModeCount
+	default:
+		return reader.ModeLines
+	}
 }

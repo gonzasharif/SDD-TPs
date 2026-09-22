@@ -28,6 +28,18 @@ func (w *Writer) Match(object string, lineNum int, line string) {
 	fmt.Fprintf(w.Stdout, "%s:%d:%s\n", object, lineNum, line)
 }
 
+// ObjectName prints just the name of an object that matched, once per
+// object (FR-5, -l).
+func (w *Writer) ObjectName(object string) {
+	fmt.Fprintln(w.Stdout, object)
+}
+
+// Count prints an object's number of matching lines as object:count
+// (FR-6, -c), including objects with zero matches.
+func (w *Writer) Count(object string, count int) {
+	fmt.Fprintf(w.Stdout, "%s:%d\n", object, count)
+}
+
 // Warning reports a recoverable, per-object condition (an unreadable
 // object, a binary skip, a long line skip) that must not abort the run
 // (FR-9, FR-11, FR-15).
