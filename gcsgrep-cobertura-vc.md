@@ -139,7 +139,7 @@ BUCKET=<test-bucket>
 | VCs en el alcance de la Iteración 2 | 10 (VC-3 completo, VC-5, VC-6, VC-7, VC-10, VC-12, VC-18, VC-19, VC-23, más la regresión de VC-8) |
 | VCs con cobertura ejecutable | 10 |
 | VCs pasando (tests unitarios + emulador local) | 10 |
-| VCs verificados contra GCS real | **0 — pendiente** (ver nota 3) |
+| VCs verificados contra GCS real | 7 de 10 (VC-3, VC-5, VC-6, VC-7, VC-8, VC-10, VC-19) + VC-18 (a); pendientes VC-12 y VC-18 (b) por falta de permiso de escritura, y VC-23 no se puede provocar en GCS real (ver nota 3) |
 | Tests unitarios | 59 (21 de la Iteración 1 + 38 nuevos), todos verdes; `go vet` sin warnings |
 
 ### Cómo se verificó esta vez: tres niveles
@@ -156,7 +156,8 @@ BUCKET=<test-bucket>
    real (`script`)— sin credenciales. No sustituye a GCS real (ver nota 3),
    pero es un nivel de evidencia más alto que el cliente fake: lo que se
    prueba acá es el mismo binario que se entrega.
-3. **GCS real:** pendiente.
+3. **GCS real:** el 2026-09-22, contra el bucket de prueba, con ADC de la
+   cuenta del equipo (ver nota 3).
 
 ### Cobertura, una por una
 
@@ -173,22 +174,52 @@ BUCKET=<test-bucket>
 | VC-19 | BR-5 tope acumulado | `TestProcessObject_TotalBudgetIsSharedAcrossObjects`, `TestRun_TotalSizeLimitStopsTheRun` + emulador | `--max-total-size 500` sobre 60 objetos: 18 GETs, el objeto 17 se corta a la mitad, los matches de los 17 anteriores se imprimen, warning de corrida incompleta, exit 2. Con `-c`, el objeto cortado no imprime un conteo parcial | ✅ |
 | VC-23 | NFR-3 reintentos | `internal/gcsclient/retry_test.go::TestRetry_*` (6 tests) + `TestProcessObject_MidReadErrorFailsObjectAndKeepsEarlierMatches`, `TestRun_MidReadFailurePrintsEarlierMatchesOnce` + emulador inyectando 503 | (a) 2×503 y después OK → recuperado, esperas de exactamente 500ms y 1s (reloj inyectado); (b) 503 persistente → **exactamente 3 GETs** en el log del emulador (lo que confirma además que el retry propio del SDK quedó desactivado), warning, exit 2; (c) 403/404 → 1 intento, sin espera; (d) corte a mitad de lectura → el match previo se imprime una sola vez, objeto fallido, sin reintento | ✅ |
 
-### Nota 3 — sin verificación contra GCS real todavía
+### Nota 3 — verificación contra GCS real
 
-En la máquina donde se implementó la Iteración 2 no hay `gcloud` ni
-credenciales ADC, así que ningún VC de esta iteración se corrió contra el
-bucket de prueba real. El emulador cubre el binario y el SDK reales, pero no
-puede verificar:
+La Iteración 2 se implementó en una máquina sin `gcloud` ni credenciales, así
+que primero se verificó con tests y emulador. Después (2026-09-22) se instaló
+`gcloud`, se configuró ADC y se corrió contra el bucket de prueba real. Todo lo
+que se pudo correr coincidió con lo observado en el emulador.
 
-- que GCS real responda con los mismos códigos y encabezados que el
-  emulador (en particular el *decompressive transcoding* de VC-12 (b), que el
-  emulador imita según la documentación de GCS);
-- la regresión de VC-22 (memoria constante) con la descompresión gzip en el
-  camino, que depende de medir RSS contra objetos grandes reales;
-- la regresión de los VCs de la Iteración 1 contra el entorno real.
+**Regresión de la Iteración 1 (GCS real):**
 
-Queda como tarea pendiente antes de dar la Iteración 2 por cerrada del todo.
-Los comandos para hacerlo están abajo.
+| VC | Se observa | Estado |
+|---|---|---|
+| VC-1 / VC-3 plano | `logs/app1.log:2:...connection timeout after 30s`, exit 0 | ✅ |
+| VC-2 | una corrida sobre `gs://<test-bucket>/` cubre `logs/` **y** `other-prefix/`. **Cambio esperado:** ahora termina con exit 2 y no 0, porque `mem/large.log` (335 MiB) supera el tope de 250 MiB de BR-4 y se saltea sin abrirse | ✅ |
+| VC-4 | `"timeout while"` sin `-i` → exit 1; con `-i` → `logs/app3.log:2`, exit 0 | ✅ |
+| VC-8 | match → 0; sin match → 1; bucket inexistente → 2 (el 404 no se reintenta) | ✅ |
+| VC-11 | `logs/icon.png` salteado como binario en todas las corridas | ✅ |
+| VC-17 | `--max 1` sobre `logs/` → error, exit 2 | ✅ |
+| VC-22 | con `-c --max-object-size 0` (el objeto grande ahora supera el tope por defecto): RSS **35.5 MiB** (8 MiB) vs. **37.5 MiB** (335 MiB) — ~2 MiB de diferencia para ~40x de tamaño | ✅ |
+
+No se volvieron a correr VC-9/VC-16 (siguen con la salvedad de la nota 1),
+VC-15 (requiere crear un service account) ni VC-21 (benchmark).
+
+**VCs de la Iteración 2 (GCS real):**
+
+| VC | Se observa | Estado |
+|---|---|---|
+| VC-3 | bajo pty (`script -qec`): `^[[01;31mtimeout^[[m` alrededor del match; con `stdout` a archivo: 0 bytes `\x1b` | ✅ |
+| VC-5 | `-l` sobre `gs://<test-bucket>/` → solo nombres (`logs/app1.log`, `mem/small.log`, `other-prefix/data.log`); sobre `mem/small.log` (8.6 MB, match en la línea 1): **1.32 s** con `-l` vs. **3.82 s** leyendo completo | ✅ |
+| VC-6 | `logs/app1.log:1`, `logs/app2.log:0`, `logs/app3.log:0`; el binario no imprime conteo | ✅ |
+| VC-7 | `-l -c` → error de uso, exit 2 | ✅ |
+| VC-8 (regresión) | nuevas fuentes de exit 2 observadas en real: BR-4 antes de abrir (VC-2) y BR-5 (VC-19) | ✅ |
+| VC-10 | (a) pty sobre `perf/` (30 objetos): 31 redibujados, porcentaje monótono 0 → 100, final `100% (30/30 objects)`; (b) `stderr` a archivo sobre el bucket completo: 10 líneas, 0 `\r` | ✅ |
+| VC-18 (a) | `mem/large.log` (351 462 090 bytes) salteado por tamaño listado, sin abrirse, warning, exit 2 | ✅ |
+| VC-19 | `--max-total-size 10MiB -c` sobre el bucket completo: se leen `logs/`, `mem/small.log`, `other-prefix/`, `perf/obj_1.log`; `perf/obj_10.log` se corta a la mitad (sin conteo parcial), no se abre ningún objeto más, warning, exit 2 | ✅ |
+| VC-12 | — | ⏳ ver abajo |
+| VC-18 (b) | — | ⏳ ver abajo |
+| VC-23 | GCS real no permite provocar 503 a pedido; queda cubierto por tests y emulador (con requests HTTP reales contados) | n/a |
+
+**Pendiente — VC-12 y VC-18 (b):** los dos necesitan objetos gzip en el
+bucket (incluido uno con `Content-Encoding: gzip`) que todavía no existen. La
+cuenta usada tiene permiso de lectura sobre el bucket pero no de escritura
+(`storage.objects.create` → 403), así que no se pudieron subir. Hace falta que
+quien administra el entorno los suba (o dé permiso de escritura sobre el
+prefijo `gz/`) y correr los comandos de VC-12 y VC-18 de abajo. Hasta
+entonces, esos dos VCs están verificados con tests y emulador, no contra GCS
+real.
 
 ### Nota 4 — bug de la Iteración 1 encontrado en esta iteración
 
