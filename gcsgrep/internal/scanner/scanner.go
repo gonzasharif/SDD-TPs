@@ -1,7 +1,8 @@
 // Package scanner lists the objects under a bucket/prefix, applies the
 // object-count guardrail (BR-3) before reading any content, processes each
-// object, and decides the process exit code (FR-8). Iteration 1 processes
-// objects sequentially; the worker pool (FR-13) is Iteration 3 scope.
+// object within the size guardrails (BR-4, BR-5) while reporting progress
+// (FR-10), and decides the process exit code (FR-8). Objects are processed
+// one at a time; the worker pool (FR-13) is Iteration 3 scope.
 package scanner
 
 import (
@@ -23,8 +24,13 @@ const (
 	ExitError   = 2
 )
 
-// DefaultMaxObjects is BR-3's default object-count guardrail.
-const DefaultMaxObjects = 1000
+// Default guardrails: BR-3 (object count), BR-4 (bytes per object), and
+// BR-5 (bytes per run). Sizes count decompressed bytes.
+const (
+	DefaultMaxObjects    = 1000
+	DefaultMaxObjectSize = 250 << 20
+	DefaultMaxTotalSize  = 2 << 30
+)
 
 // Config controls a single scan run.
 type Config struct {
@@ -39,11 +45,21 @@ type Config struct {
 	// MaxLineSize is forwarded to reader.Options (FR-15). Zero uses the
 	// reader's default.
 	MaxLineSize int
+
+	// Mode selects the output mode: every matching line (default), only
+	// the names of matching objects (-l), or a per-object count (-c).
+	Mode reader.Mode
+
+	// MaxObjectSize is BR-4's per-object limit in bytes; MaxTotalSize is
+	// BR-5's limit for the whole run. Zero disables either one.
+	MaxObjectSize int64
+	MaxTotalSize  int64
 }
 
 // Run lists objects under cfg.Bucket/cfg.Prefix (FR-1, FR-2), applies the
-// BR-3 guardrail, processes each object against m, writes results and
-// diagnostics through w, and returns the process exit code.
+// BR-3 guardrail, processes each object against m within the BR-4 and BR-5
+// size limits, writes results, diagnostics, and progress (FR-10) through
+// w, and returns the process exit code.
 func Run(ctx context.Context, client gcsclient.Client, cfg Config, m *match.Matcher, w *output.Writer) int {
 	objects, err := client.List(ctx, cfg.Bucket, cfg.Prefix)
 	if err != nil {
@@ -59,37 +75,33 @@ func Run(ctx context.Context, client gcsclient.Client, cfg Config, m *match.Matc
 		return ExitError
 	}
 
+	var budget *reader.Budget
+	if cfg.MaxTotalSize > 0 {
+		budget = reader.NewBudget(cfg.MaxTotalSize)
+	}
+
 	matchFound := false
 	anyError := false
 
+	w.StartProgress(len(objects))
 	for _, obj := range objects {
-		stream, err := client.Open(ctx, cfg.Bucket, obj.Name)
-		if err != nil {
-			w.Warning("%s: could not open (%v)", obj.Name, err)
+		// BR-5: once the run's budget is spent, no further object is
+		// opened — not even one that might turn out to be empty.
+		if budget.Exhausted() {
+			w.Warning("total size limit of %d bytes reached; not reading the remaining objects, results are incomplete (use --max-total-size to raise it)", cfg.MaxTotalSize)
 			anyError = true
-			continue
+			break
 		}
 
-		res := reader.ProcessObject(stream, obj.Name, m, reader.Options{MaxLineSize: cfg.MaxLineSize})
-		stream.Close()
-
-		if res.Failed {
-			w.Warning("%s: %s", res.Object, res.FailReason)
-			anyError = true
-			continue
-		}
-		if res.Skipped {
-			w.Warning("%s: skipped (%s)", res.Object, res.SkipReason)
-			continue
-		}
-		if res.LongLineWarn {
-			w.Warning("%s: at least one line exceeded the buffer and was skipped without matching", res.Object)
-		}
-		for _, lm := range res.Matches {
-			matchFound = true
-			w.Match(res.Object, lm.LineNum, lm.Text)
+		out := scanObject(ctx, client, cfg, obj, m, w, budget)
+		w.AdvanceProgress()
+		matchFound = matchFound || out.matched
+		anyError = anyError || out.failed
+		if out.stop {
+			break
 		}
 	}
+	w.FinishProgress()
 
 	if anyError {
 		return ExitError
@@ -98,4 +110,77 @@ func Run(ctx context.Context, client gcsclient.Client, cfg Config, m *match.Matc
 		return ExitMatch
 	}
 	return ExitNoMatch
+}
+
+// objectOutcome is what one object contributes to the run's result.
+type objectOutcome struct {
+	matched bool // at least one match (FR-8 exit 0)
+	failed  bool // searched only partially or not at all (FR-8 exit 2)
+	stop    bool // BR-5's budget ran out: open no further object
+}
+
+// scanObject opens, searches, and reports a single object.
+func scanObject(ctx context.Context, client gcsclient.Client, cfg Config, obj gcsclient.ObjectInfo, m *match.Matcher, w *output.Writer, budget *reader.Budget) objectOutcome {
+	// BR-4, before opening: a listed size already over the limit means
+	// reading it would cross the limit, compressed or not.
+	if cfg.MaxObjectSize > 0 && obj.Size > cfg.MaxObjectSize {
+		w.Warning("%s: skipped, its size (%d bytes) exceeds the per-object limit of %d bytes (use --max-object-size to raise it)", obj.Name, obj.Size, cfg.MaxObjectSize)
+		return objectOutcome{failed: true}
+	}
+
+	stream, err := client.Open(ctx, cfg.Bucket, obj.Name)
+	if err != nil {
+		w.Warning("%s: could not open (%v)", obj.Name, err)
+		return objectOutcome{failed: true}
+	}
+
+	res := reader.ProcessObject(stream, obj.Name, m, reader.Options{
+		MaxLineSize:   cfg.MaxLineSize,
+		Mode:          cfg.Mode,
+		MaxObjectSize: cfg.MaxObjectSize,
+		Budget:        budget,
+	})
+	stream.Close()
+
+	if res.Skipped {
+		w.Warning("%s: skipped (%s)", res.Object, res.SkipReason)
+		return objectOutcome{}
+	}
+
+	// Matches found before an object was cut short are still correct, so
+	// they are printed; what's missing is the rest of the object.
+	switch cfg.Mode {
+	case reader.ModeList:
+		if res.MatchCount > 0 {
+			w.ObjectName(res.Object)
+		}
+	case reader.ModeCount:
+		// A partial count would look like a real one, so none is printed
+		// for an incomplete object.
+		if !res.Incomplete() {
+			w.Count(res.Object, res.MatchCount)
+		}
+	default:
+		for _, lm := range res.Matches {
+			w.Match(res.Object, lm.LineNum, lm.Text, lm.Spans)
+		}
+	}
+
+	if res.LongLineWarn {
+		w.Warning("%s: at least one line exceeded the buffer and was skipped without matching", res.Object)
+	}
+	switch {
+	case res.Failed:
+		w.Warning("%s: %s", res.Object, res.FailReason)
+	case res.ObjectSizeLimitHit:
+		w.Warning("%s: stopped reading at the per-object limit of %d bytes, results for it are incomplete (use --max-object-size to raise it)", res.Object, cfg.MaxObjectSize)
+	case res.TotalSizeLimitHit:
+		w.Warning("%s: total size limit of %d bytes reached mid-object; not reading the remaining objects, results are incomplete (use --max-total-size to raise it)", res.Object, cfg.MaxTotalSize)
+	}
+
+	return objectOutcome{
+		matched: res.MatchCount > 0,
+		failed:  res.Incomplete(),
+		stop:    res.TotalSizeLimitHit,
+	}
 }

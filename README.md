@@ -28,8 +28,14 @@ go vet ./...     # chequeo estático
 ```
 
 ```bash
-./gcsgrep [-i] [--max N] "PATRÓN" gs://bucket/prefijo
+./gcsgrep [-i] [-l | -c] [--max N] [--max-object-size SIZE] \
+          [--max-total-size SIZE] [--max-line-size SIZE] "PATRÓN" gs://bucket/prefijo
 ```
+
+Los flags van antes del patrón. `-l` lista solo los objetos con match, `-c`
+cuenta las líneas que matchean por objeto. Los objetos gzip se descomprimen al
+vuelo. Guardrails por defecto: 1000 objetos (`--max`), 250 MiB por objeto y
+2 GiB por corrida (los tamaños aceptan `KiB`/`MiB`/`GiB`; `0` deshabilita).
 
 Necesita Application Default Credentials (`gcloud auth application-default
 login`) — no acepta ninguna otra forma de autenticación (BR-2). No escribe
@@ -37,6 +43,13 @@ nunca en GCS (BR-1).
 
 ### Estado
 
-Iteración 1 implementada y verificada (ver `gcsgrep-cobertura-vc.md`), con
-dos VCs (VC-9/VC-16) marcados con una salvedad explícita: se probaron con
-un cliente GCS fake, no contra un objeto real con ACL restringida.
+- **Iteración 1:** implementada y verificada contra GCS real (ver
+  `gcsgrep-cobertura-vc.md`), con dos VCs (VC-9/VC-16) marcados con una
+  salvedad explícita: se probaron con un cliente GCS fake, no contra un objeto
+  real con ACL restringida.
+- **Iteración 2** (`-l`/`-c`, gzip, guardrails de tamaño, reintentos, color y
+  progreso): implementada; todos sus VCs pasan en tests unitarios y con el
+  binario real contra un emulador local de GCS, y contra GCS real todos salvo
+  VC-23 (reintentos ante 503, que GCS no permite provocar a pedido; cubierto
+  por tests y emulador). Ver nota 3 de la tabla de cobertura.
+- **Iteración 3** (concurrencia): pendiente.

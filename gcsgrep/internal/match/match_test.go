@@ -41,3 +41,15 @@ func TestNew_InvalidRegex(t *testing.T) {
 		t.Errorf("an invalid regex pattern should fail to compile")
 	}
 }
+
+// FR-3: match offsets used for highlighting, honoring -i.
+func TestFindAllIndex(t *testing.T) {
+	m, err := New("timeout", true)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	got := m.FindAllIndex("TIMEOUT then timeout")
+	if len(got) != 2 || got[0][0] != 0 || got[0][1] != 7 || got[1][0] != 13 || got[1][1] != 20 {
+		t.Errorf("FindAllIndex = %v, want [[0 7] [13 20]]", got)
+	}
+}

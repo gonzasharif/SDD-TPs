@@ -95,20 +95,20 @@ memoria ni escanear un bucket entero por accidente.
 
 **Criterios de éxito**
 
-- [ ] VC-1 pasa — búsqueda básica sobre un prefijo
-- [ ] VC-2 pasa — búsqueda sobre bucket completo
-- [ ] VC-3 pasa (solo la rama sin color) — formato `objeto:línea:texto` en
+- [x] VC-1 pasa — búsqueda básica sobre un prefijo
+- [x] VC-2 pasa — búsqueda sobre bucket completo
+- [x] VC-3 pasa (solo la rama sin color) — formato `objeto:línea:texto` en
       texto plano
-- [ ] VC-4 pasa — `-i` case-insensitive
-- [ ] VC-8 pasa — exit codes 0/1/2 en los tres escenarios controlados
-- [ ] VC-9 pasa — un objeto ilegible no aborta la corrida
-- [ ] VC-11 pasa — binarios se saltean sin volcar basura a la terminal
-- [ ] VC-15 pasa — la suite funciona igual con credenciales de solo lectura
-- [ ] VC-16 pasa — no se expone contenido fuera del acceso del usuario
-- [ ] VC-17 pasa — guardrail de cantidad de objetos (1000 por defecto)
-- [ ] VC-22 pasa — memoria constante entre un objeto chico y uno grande
-- [ ] VC-24 pasa — una línea que excede el buffer se saltea, no se trunca
-- [ ] VC-21 pasa (solo la mitad secuencial) — throughput ≥ 0.5 objetos/seg
+- [x] VC-4 pasa — `-i` case-insensitive
+- [x] VC-8 pasa — exit codes 0/1/2 en los tres escenarios controlados
+- [x] VC-9 pasa — un objeto ilegible no aborta la corrida
+- [x] VC-11 pasa — binarios se saltean sin volcar basura a la terminal
+- [x] VC-15 pasa — la suite funciona igual con credenciales de solo lectura
+- [x] VC-16 pasa — no se expone contenido fuera del acceso del usuario
+- [x] VC-17 pasa — guardrail de cantidad de objetos (1000 por defecto)
+- [x] VC-22 pasa — memoria constante entre un objeto chico y uno grande
+- [x] VC-24 pasa — una línea que excede el buffer se saltea, no se trunca
+- [x] VC-21 pasa (solo la mitad secuencial) — throughput ≥ 0.5 objetos/seg
 
 **Demostrable así:**
 
@@ -163,17 +163,19 @@ progreso), y dejar de ser pesimista ante blips de red transitorios.
 
 **Criterios de éxito**
 
-- [ ] Todos los VCs de la Iteración 1 siguen pasando
-- [ ] VC-3 pasa completo (rama con color TTY, además de la rama plana ya
+- [x] Todos los VCs de la Iteración 1 siguen pasando (en tests unitarios;
+      contra GCS real se re-corrieron VC-1/2/3/4/8/11/17/22 — ver nota 3 de
+      `gcsgrep-cobertura-vc.md`)
+- [x] VC-3 pasa completo (rama con color TTY, además de la rama plana ya
       cubierta en la Iteración 1)
-- [ ] VC-5 pasa — `-l` corta la lectura en el primer match
-- [ ] VC-6 pasa — `-c` cuenta matches leyendo el objeto completo
-- [ ] VC-7 pasa — `-l` y `-c` juntas se rechazan con exit 2
-- [ ] VC-10 pasa — progreso con barra (TTY) y con líneas simples (no TTY)
-- [ ] VC-12 pasa — `.gz` se descomprime y se busca dentro del contenido
-- [ ] VC-18 pasa — guardrail de tamaño por objeto (250 MiB descomprimidos)
-- [ ] VC-19 pasa — guardrail acumulado de la corrida (2 GiB descomprimidos)
-- [ ] VC-23 pasa — reintentos ante fallos de red transitorios
+- [x] VC-5 pasa — `-l` corta la lectura en el primer match
+- [x] VC-6 pasa — `-c` cuenta matches leyendo el objeto completo
+- [x] VC-7 pasa — `-l` y `-c` juntas se rechazan con exit 2
+- [x] VC-10 pasa — progreso con barra (TTY) y con líneas simples (no TTY)
+- [x] VC-12 pasa — `.gz` se descomprime y se busca dentro del contenido
+- [x] VC-18 pasa — guardrail de tamaño por objeto (250 MiB descomprimidos)
+- [x] VC-19 pasa — guardrail acumulado de la corrida (2 GiB descomprimidos)
+- [x] VC-23 pasa — reintentos ante fallos de red transitorios
 
 **Nota de regresión:** VC-3 se verificó en la Iteración 1 solo en su rama
 sin color (porque el color todavía no existía); acá hay que volver a
