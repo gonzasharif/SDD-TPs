@@ -1,7 +1,8 @@
 // Package scanner lists the objects under a bucket/prefix, applies the
 // object-count guardrail (BR-3) before reading any content, processes each
-// object, and decides the process exit code (FR-8). Iteration 1 processes
-// objects sequentially; the worker pool (FR-13) is Iteration 3 scope.
+// object within the size guardrails (BR-4, BR-5) while reporting progress
+// (FR-10), and decides the process exit code (FR-8). Objects are processed
+// one at a time; the worker pool (FR-13) is Iteration 3 scope.
 package scanner
 
 import (

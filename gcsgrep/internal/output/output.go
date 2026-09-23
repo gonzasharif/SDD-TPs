@@ -1,8 +1,9 @@
-// Package output writes gcsgrep's results and diagnostics.
-// Matches go to stdout so a script can pipe/parse them (FR-3, NFR-3 in the
-// spec: stdout stays clean). Warnings and errors go to stderr, never mixed
-// into stdout, so FR-9's "continue past a bad object" behavior never
-// corrupts the results a downstream consumer parses.
+// Package output writes gcsgrep's results, diagnostics, and progress.
+// Matches go to stdout so a script can pipe/parse them (FR-3: stdout stays
+// clean, and colored only on a terminal). Warnings, errors, and progress
+// (FR-10) go to stderr, never mixed into stdout, so FR-9's "continue past a
+// bad object" behavior never corrupts the results a downstream consumer
+// parses.
 package output
 
 import (
