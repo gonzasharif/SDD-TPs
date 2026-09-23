@@ -139,7 +139,7 @@ BUCKET=<test-bucket>
 | VCs en el alcance de la Iteración 2 | 10 (VC-3 completo, VC-5, VC-6, VC-7, VC-10, VC-12, VC-18, VC-19, VC-23, más la regresión de VC-8) |
 | VCs con cobertura ejecutable | 10 |
 | VCs pasando (tests unitarios + emulador local) | 10 |
-| VCs verificados contra GCS real | 7 de 10 (VC-3, VC-5, VC-6, VC-7, VC-8, VC-10, VC-19) + VC-18 (a); pendientes VC-12 y VC-18 (b) por falta de permiso de escritura, y VC-23 no se puede provocar en GCS real (ver nota 3) |
+| VCs verificados contra GCS real | 9 de 10 (todos salvo VC-23, que no se puede provocar en GCS real: 503 a pedido; ver nota 3) |
 | Tests unitarios | 59 (21 de la Iteración 1 + 38 nuevos), todos verdes; `go vet` sin warnings |
 
 ### Cómo se verificó esta vez: tres niveles
@@ -156,8 +156,8 @@ BUCKET=<test-bucket>
    real (`script`)— sin credenciales. No sustituye a GCS real (ver nota 3),
    pero es un nivel de evidencia más alto que el cliente fake: lo que se
    prueba acá es el mismo binario que se entrega.
-3. **GCS real:** el 2026-09-22, contra el bucket de prueba, con ADC de la
-   cuenta del equipo (ver nota 3).
+3. **GCS real:** el 2026-09-22 y 2026-09-23, contra el bucket de prueba, con
+   ADC de la cuenta del equipo (ver nota 3).
 
 ### Cobertura, una por una
 
@@ -208,18 +208,20 @@ VC-15 (requiere crear un service account) ni VC-21 (benchmark).
 | VC-10 | (a) pty sobre `perf/` (30 objetos): 31 redibujados, porcentaje monótono 0 → 100, final `100% (30/30 objects)`; (b) `stderr` a archivo sobre el bucket completo: 10 líneas, 0 `\r` | ✅ |
 | VC-18 (a) | `mem/large.log` (351 462 090 bytes) salteado por tamaño listado, sin abrirse, warning, exit 2 | ✅ |
 | VC-19 | `--max-total-size 10MiB -c` sobre el bucket completo: se leen `logs/`, `mem/small.log`, `other-prefix/`, `perf/obj_1.log`; `perf/obj_10.log` se corta a la mitad (sin conteo parcial), no se abre ningún objeto más, warning, exit 2 | ✅ |
-| VC-12 | — | ⏳ ver abajo |
-| VC-18 (b) | — | ⏳ ver abajo |
+| VC-12 | los tres casos, con objetos subidos a `gz/`: (a) `gz/plain.log.gz` → `:2:...gzip plain timeout inside`; (b) `gz/transcoded.log.gz` con `Content-Encoding: gzip` → `:2:...transcoded timeout line` — un `curl` al mismo objeto confirma que GCS lo entrega **ya descomprimido** (respuesta sin `Content-Encoding`, con `x-goog-stored-content-encoding: gzip`), y `gcsgrep` lo trata como texto sin intentar descomprimirlo de nuevo; (c) `gz/noext` → `:1:...connection timeout`. Siempre con el nombre original, exit 0 | ✅ |
+| VC-18 (b) | `gzbomb/bomb.gz`: 852 KiB en GCS, ~286 MiB descomprimido. Con `--max-object-size 10MiB`: match de la línea 1 impreso, corte en el límite, warning, exit 2, 2.1 s. Con el límite por defecto (250 MiB): mismo resultado, corte en 262 144 000 bytes, 3.7 s, **RSS 39 MiB** tras descomprimir 250 MiB (NFR-2 se sostiene también con gzip en el camino) | ✅ |
 | VC-23 | GCS real no permite provocar 503 a pedido; queda cubierto por tests y emulador (con requests HTTP reales contados) | n/a |
 
-**Pendiente — VC-12 y VC-18 (b):** los dos necesitan objetos gzip en el
-bucket (incluido uno con `Content-Encoding: gzip`) que todavía no existen. La
-cuenta usada tiene permiso de lectura sobre el bucket pero no de escritura
-(`storage.objects.create` → 403), así que no se pudieron subir. Hace falta que
-quien administra el entorno los suba (o dé permiso de escritura sobre el
-prefijo `gz/`) y correr los comandos de VC-12 y VC-18 de abajo. Hasta
-entonces, esos dos VCs están verificados con tests y emulador, no contra GCS
-real.
+**VC-12 y VC-18 (b)** necesitaban objetos gzip que el bucket no tenía. El
+2026-09-22 la cuenta tenía solo lectura (`storage.objects.create` → 403);
+el 2026-09-23, con permiso de escritura ya otorgado, se subieron
+`gz/plain.log.gz`, `gz/transcoded.log.gz` (con `Content-Encoding: gzip`),
+`gz/noext` y `gzbomb/bomb.gz`, y los dos VCs pasaron. Esos objetos quedan en
+el bucket para futuras regresiones.
+
+Con esto la Iteración 2 queda cerrada: los 10 VCs de su alcance pasan en
+tests unitarios, 10 de 10 contra el binario real con emulador, y 9 de 10
+contra GCS real (VC-23 no se puede ejercitar en GCS real por diseño).
 
 ### Nota 4 — bug de la Iteración 1 encontrado en esta iteración
 
