@@ -49,6 +49,7 @@ nunca en GCS (BR-1).
   real con ACL restringida.
 - **Iteración 2** (`-l`/`-c`, gzip, guardrails de tamaño, reintentos, color y
   progreso): implementada; todos sus VCs pasan en tests unitarios y con el
-  binario real contra un emulador local de GCS. **Falta correrla contra GCS
-  real** (nota 3 de la tabla de cobertura).
+  binario real contra un emulador local de GCS, y 7 de 10 también contra GCS
+  real. **Pendientes contra GCS real: VC-12 y VC-18 (b)**, que necesitan subir
+  objetos gzip de prueba al bucket (nota 3 de la tabla de cobertura).
 - **Iteración 3** (concurrencia): pendiente.
