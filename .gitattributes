@@ -1,0 +1,4 @@
+# Let git normalize line endings: LF in the repository, whatever the
+# platform uses in the working tree. Stops Windows (CRLF) checkouts from
+# showing every file as modified.
+* text=auto
