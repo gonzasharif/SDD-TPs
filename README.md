@@ -28,7 +28,7 @@ go vet ./...     # chequeo estático
 ```
 
 ```bash
-./gcsgrep [-i] [-l | -c] [--max N] [--max-object-size SIZE] \
+./gcsgrep [-i] [-l | -c] [-j N] [--max N] [--max-object-size SIZE] \
           [--max-total-size SIZE] [--max-line-size SIZE] "PATRÓN" gs://bucket/prefijo
 ```
 
@@ -52,4 +52,13 @@ nunca en GCS (BR-1).
   binario real contra un emulador local de GCS, y contra GCS real todos salvo
   VC-23 (reintentos ante 503, que GCS no permite provocar a pedido; cubierto
   por tests y emulador). Ver nota 3 de la tabla de cobertura.
-- **Iteración 3** (concurrencia): pendiente.
+- **Iteración 3** (concurrencia, rama `iteration-3`): implementada
+  (`--concurrency N` / `-j N`, worker pool, `Budget` y `Writer` thread-safe) y
+  verificada con tests unitarios bajo `-race` y contra GCS real (VC-14/20, VC-19 y
+  la regresión con `-j 8`). VC-13 medido contra GCS real: entre 3,6x y 5,7x más
+  rápido con `-j 8` sobre 30 objetos, en tres corridas (varía con la red).
+  **Pendiente:** el benchmark de VC-21 (el umbral de ≥ 15 objetos/seg no se
+  alcanza desde el entorno de prueba, limitado por la red), VC-3 con TTY real y
+  VC-22. Los tests de integración contra GCS real están en `gcsgrep/integration/`
+  (`go test -tags integration ./integration/`). Ver la sección "Iteración 3" de
+  `gcsgrep-cobertura-vc.md`.

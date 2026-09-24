@@ -210,12 +210,20 @@ completa (15 FRs, 6 BRs, 3 NFRs).
 
 - [ ] Todos los VCs de las Iteraciones 1 y 2 siguen pasando, corridos además
       con `--concurrency 8` (no solo en modo secuencial)
-- [ ] VC-13 pasa — reducción de tiempo total con concurrencia, mismo
-      conjunto de resultados que en modo secuencial
-- [ ] VC-14 pasa — `--concurrency` fuera de rango se rechaza
-- [ ] VC-20 pasa — idéntico a VC-14
+- [x] VC-13 pasa — reducción de tiempo total con concurrencia, mismo
+      conjunto de resultados que en modo secuencial (contra GCS real, 30
+      objetos, tres corridas: 5,3x, 5,7x y 3,6x más rápido con `-j 8`)
+- [x] VC-14 pasa — `--concurrency` fuera de rango se rechaza
+- [x] VC-20 pasa — idéntico a VC-14
 - [ ] VC-21 pasa completo — throughput con concurrencia y latencia al
       primer resultado, además del umbral secuencial ya validado
+
+**Estado (rama `iteration-3`):** implementación completa, verificada con
+tests unitarios bajo `-race` y contra GCS real (`gcsgrep/integration/`). Quedan sin
+tildar, a propósito: la regresión completa con `--concurrency 8` (falta VC-3 con
+color en una terminal real y VC-22, memoria) y VC-21, cuyo umbral de ≥ 15
+objetos/seg no se alcanza desde el entorno de prueba por límite de red (ver
+`gcsgrep-cobertura-vc.md`, sección "Iteración 3").
 
 **Nota de regresión:** esta es la iteración de mayor riesgo de regresión
 silenciosa, porque introduce concurrencia sobre comportamiento que hasta acá

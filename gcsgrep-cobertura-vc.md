@@ -304,3 +304,166 @@ gsutil cp app.log.gz "gs://${BUCKET}/gz/noext"
 - **VC-23 (b) se verificó contando requests HTTP reales**, no solo llamadas
   a una interfaz: eso es lo que prueba que no hay dos políticas de reintento
   apiladas.
+
+## Iteración 3
+
+> Rama `iteration-3`. Esta sección es la evidencia de la iteración y **no
+> reescribe** las anteriores. Está escrita para distinguir con claridad lo que
+> ya se verificó de lo que todavía está pendiente.
+
+### Resumen
+
+| | |
+|---|---|
+| VCs en el alcance de la Iteración 3 | 5 (VC-13, VC-14, VC-20, VC-21 completo, más la regresión de las Iteraciones 1 y 2 con concurrencia) |
+| Pasando con tests unitarios (`-race`) | VC-14, VC-20, VC-13 (mitad funcional), regresión unitaria |
+| Verificados contra GCS real (2026-09-24) | VC-13, VC-14, VC-20, la regresión con `-j 1` y `-j 8` de VC-1, 2, 4, 5, 6, 7, 8, 11 y 17, y VC-19 (10 corridas). Ver "Verificación contra GCS real" |
+| **Pendientes** | VC-21 (benchmark de ≥ 500 objetos y decisión sobre el umbral de ≥ 15 objetos/seg), VC-3 (color con TTY) y VC-22 (memoria) con `-j 8` |
+| Tests nuevos | 17 unitarios (reader 3, output 3, cli 3, scanner 8) y los de `gcsgrep/integration/` |
+
+### Qué cambió en el código
+
+- **`scanner.Run`**: un worker pool con cola compartida (canal cargado de antemano
+  y cerrado). Cada worker toma el próximo objeto apenas termina el anterior, sin
+  reparto en bloques. Con `Concurrency` 1 (default) hay un único worker y los
+  objetos se procesan en orden de listado, como antes.
+- **`reader.Budget` (BR-5)**: pasó de un contador plano a un contador atómico con
+  **reserva previa**. Un worker reserva bytes con compare-and-swap *antes* de leer
+  y devuelve lo que no usó. Restar después de leer dejaba pasar a N workers con el
+  mismo remanente y sobrepasaba el límite.
+- **`output.Writer`**: con `sync.Mutex`; todas las escrituras y el estado del
+  progreso (FR-10) van bajo el lock. `Writer.Do` agrupa las escrituras de un
+  objeto bajo un único lock, así sus matches y warnings salen contiguos.
+- **`cli`**: `--concurrency N` y `-j N` (mismo valor); rango 1..32 validado en
+  `Parse`, antes de que `main` cree el cliente de GCS.
+- **Estado compartido del run**: `matchFound`, `anyError` y `stopped` son
+  `atomic.Bool`; se leen recién después de `wg.Wait()`.
+
+### Cobertura, una por una
+
+| VC | Requisito | Ejercitado por | Se observa | Estado |
+|---|---|---|---|---|
+| VC-14 | FR-14 tope de concurrencia | `cli/concurrency_test.go::TestParse_ConcurrencyOutOfRangeIsRejected` (`33`, `100`, `0`, `-1`, `abc`, con `-j` y `--concurrency`), `TestParse_ConcurrencyErrorExplainsTheRange`; `integration/`: `TestVC14_ConcurrencyOutOfRangeIsRejected` | error de uso que nombra el flag y el rango `1 and 32`, exit 2. `Parse` falla antes de crear el cliente de GCS, por lo que no hay ninguna llamada de lectura (mismo mecanismo que VC-7) | ✅ |
+| VC-20 | BR-6 tope | idéntico a VC-14 | idem | ✅ |
+| VC-13 (mitad funcional) | FR-13 mismo conjunto de resultados | `scanner/concurrency_test.go::TestRun_ConcurrentResultsMatchSequential` (60 objetos, `-j 1` vs `-j 8`) | mismos 20 matches y mismo exit code; solo cambia el orden | ✅ |
+| VC-13 (paralelismo real) | FR-13 N workers en simultáneo | `TestRun_WorkersReadInParallelUpToTheLimit`, `TestRun_DefaultIsSequentialAndOrdered`, `TestRun_MoreWorkersThanObjects` | con `-j 4`: entre 2 y 4 objetos abiertos a la vez y cada uno abierto exactamente una vez; sin el flag: nunca más de 1 y salida en orden de listado | ✅ |
+| VC-13 (reducción de tiempo) | FR-13 medición | `integration/`: `TestVC13_ConcurrentMatchesSequential` contra el bucket real, 30 objetos de `perf/` con `-c`, **tres corridas** | mismos 30 resultados y mismo exit code en todas (1: `perf/` no contiene el patrón; `-c` imprime igual cada objeto). Secuencial vs `-j 8`: **53,02 s → 10,04 s (5,28x)**, **51,54 s → 9,01 s (5,72x)** y **63,74 s → 17,68 s (3,61x)**. La tercera corrida, con el test ya corregido, pasa (`PASS`). La mejora varía con la red, pero siempre es > 3x | ✅ |
+| VC-21 (completo) | NFR-1 con concurrencia | misma medición de VC-13 (30 objetos, no los ≥ 500 de la spec) | Secuencial: **0,57**, **0,58** y **0,47 objetos/seg** en las tres corridas (el umbral de ≥ 0,5 queda **en el borde** y depende de la red). Con `-j 8`: **2,99**, **3,33** y **1,70 objetos/seg**. El umbral **≥ 15 objetos/seg no se alcanza desde este entorno**: son ~51 MB en ~52 s, es decir ~1 MB/s por conexión, así que el límite es el ancho de banda hacia GCS y no el código (mismo diagnóstico que la nota 2). Falta el benchmark de ≥ 500 objetos y decidir cómo validar el umbral | ⏳ pendiente |
+| Regresión BR-5 / VC-19 | BR-5 bajo concurrencia | `reader/limit_test.go::TestBudget_ReserveNeverHandsOutMoreThanTheLimit`, `TestLimitedReader_ConcurrentReadersShareOneBudget`, `TestLimitedReader_ShortReadsRefundTheReservation`; `scanner::TestRun_ConcurrentTotalSizeLimitIsNeverExceeded` | 2000 corridas de 32 goroutines liberadas juntas reparten **exactamente** el límite; 16 readers concurrentes leen exactamente 2 000 017 bytes; a nivel scanner, con `-j 8` los bytes impresos nunca superan `--max-total-size`, no se abren todos los objetos, hay aviso y exit 2, en 10 repeticiones | ✅ |
+| Regresión FR-10 | progreso con contador compartido | `output/concurrency_test.go::TestProgress_ConcurrentAdvancesAreNeverLost`, `scanner::TestRun_ConcurrentProgressCountsEveryObject` | 100 avances simultáneos: exactamente 10 líneas (una por cada 10 %) y final `100/100 objects (100%)` | ✅ |
+| Regresión FR-3 / salida | líneas de distintos objetos no se mezclan | `TestWriter_ConcurrentMatchesKeepLinesIntact`, `TestWriter_DoKeepsAnObjectsOutputContiguous` | 3 200 líneas de 16 goroutines, todas íntegras; el bloque de cada objeto sale contiguo | ✅ |
+| Regresión FR-8 / FR-9 / BR-3 | exit codes y guardrails con `-j 8` | `TestRun_ConcurrentUnreadableObjectStillExitsError`, `TestRun_ConcurrentObjectCountGuardrailStillAborts` | objeto ilegible: se reporta, el resto se procesa (10 matches), exit 2; guardrail de cantidad: cero aperturas | ✅ |
+| Regresión Iteraciones 1 y 2 | los 59 tests anteriores | suite existente sin cambios | siguen pasando, incluso con `-race` (ver más abajo) | ✅ |
+
+### Cómo se comprobó que el test de `Budget` detecta el bug
+
+Un test de concurrencia que pasa no prueba nada hasta verse fallar. Se reemplazó a
+propósito el compare-and-swap de `reserve` por "leer y después restar"
+(`Add(-take)`). Con esa mutación, `TestBudget_ReserveNeverHandsOutMoreThanTheLimit`
+falla (`trial 716: granted 1024 bytes in total, want exactly 1003`); con el código
+real pasa. La primera versión del test (una sola corrida larga) **no** detectaba
+la mutación, porque el sobrepaso solo puede ocurrir en las últimas reservas: por
+eso se rehízo con 2000 repeticiones cortas y las goroutines liberadas a la vez.
+
+### Verificación contra GCS real (2026-09-24)
+
+Corrida a mano por el equipo con el binario compilado de esta rama, sobre el
+bucket de prueba (41 objetos: `logs/`, `other-prefix/`, `gz/`, `gzbomb/`, `mem/`,
+`perf/`), con ADC de la cuenta del equipo. Todo con `-j 8` salvo indicación.
+
+| VC | Comando (resumen) | Se observa | Estado |
+|---|---|---|---|
+| VC-14 / VC-20 | `-j 100`, `--concurrency 33`, `-j 0` | los tres: `--concurrency must be between 1 and 32, got N`, **exit 2**, sin lecturas | ✅ |
+| VC-1 / VC-11 | `timeout` sobre `logs/` | `logs/app1.log:2:...connection timeout after 30s`; `logs/icon.png` salteado como binario y ausente de los resultados; exit 0 | ✅ |
+| VC-8 | patrón inexistente / bucket inexistente | exit 1 sin resultados / exit 2 (`bucket doesn't exist`, 404 sin reintentos) | ✅ |
+| VC-4 | `timeout while` sin y con `-i` | sin `-i`: exit 1; con `-i`: `logs/app3.log:2:...TIMEOUT while waiting for upstream`, exit 0 | ✅ |
+| VC-17 | `--max 1` sobre `logs/` (4 objetos) | error de límite, **exit 2**, ningún objeto leído | ✅ |
+| VC-5 | `-l` sobre `logs/` | solo `logs/app1.log`, exit 0 | ✅ |
+| VC-6 | `-c` sobre `logs/` | `app1:1`, `app2:0`, `app3:0`; el binario no imprime conteo; exit 0 | ✅ |
+| VC-7 | `-l -c` | error de uso, exit 2 | ✅ |
+| VC-2 | bucket completo | matches de `logs/`, `other-prefix/`, `gz/` y `mem/small.log`; `mem/large.log` (351 462 090 bytes) salteado por el tope de 250 MiB; **exit 2** (esperado) | ✅ |
+| VC-19 | `--max-total-size 10MiB -c` sobre el bucket completo, **5 corridas seguidas** | en las cinco: `total size limit of 10485760 bytes reached mid-object`, sin conteo parcial para los objetos cortados (`gzbomb/bomb.gz` y otro objeto, distinto según la corrida), exit 2 | ✅ |
+
+Dos cosas que muestra la salida y que son la concurrencia funcionando:
+
+- **El orden ya no es el de listado.** En `-c` sobre `logs/` salió `app2`, `app3`,
+  `app1`; con `-l` y `-j 8` el nombre aparece entre líneas de progreso. Es el
+  comportamiento documentado; lo que se garantiza es que cada objeto sale entero.
+- **Con `-j 8` pueden cortarse varios objetos a la vez al agotarse el presupuesto.**
+  En VC-19 se cortan dos objetos en curso (los que estaban leyendo cuando se
+  acabó el límite), cada uno con su aviso. Es consistente con BR-5 ("incluido el
+  objeto en curso") y con que el objeto en el que cae el corte varía entre corridas.
+
+**Segunda corrida, con los tests de integración** (`go test -tags integration -v
+./integration/`, mismo día, dos veces): pasan VC-1/11 (con la comprobación de que
+la salida redirigida no lleva escapes ANSI, es decir, la rama plana de VC-3), VC-4,
+VC-5, VC-6, VC-8 y VC-17, cada uno con `-j 1` y con `-j 8`, más VC-7, VC-14 (8
+variantes) y VC-19 (5 corridas seguidas por vez, `total size limit of 10485760
+bytes reached`, exit 2).
+
+VC-13 falló en la primera corrida, y **el defecto era del test, no de `gcsgrep`**:
+la aserción exigía exit 0 suponiendo que los objetos de `perf/` contienen el
+patrón, pero no lo contienen (`-c` imprimió `:0` para los 30) y el exit 1 era el
+correcto. La comparación de resultados salió bien las dos veces (idénticos). El
+test se corrigió para exigir que ambas corridas terminen igual y sin error (exit 0
+o 1) y con los mismos resultados; la versión corregida se re-corrió y **pasa**
+(tercera corrida de la tabla).
+
+**Todavía sin evidencia real:** VC-21 completo (≥ 500 objetos), VC-3 con TTY real y
+VC-22 (memoria con `-j 8`; no está automatizado porque requiere medir el uso de
+memoria del proceso).
+
+### Cómo se verificó y qué no cubre
+
+- `go vet` limpio y `go test -race -count=5` sobre todos los paquetes: verde, en
+  la máquina del equipo (incluye `gcsclient`, que esta iteración no toca).
+
+### Decisiones y límites conocidos
+
+- **Orden de salida:** con `-j` > 1 no coincide con el orden de listado (esperado,
+  documentado en `gcsgrep-requirements.md`). Lo que sí se garantiza es que la
+  salida de un mismo objeto es contigua.
+- **BR-5 puede cortar una lectura antes de tiempo, nunca después.** Mientras un
+  worker tiene bytes reservados que devolverá parcialmente (`refund`), el
+  remanente parece menor de lo real. Solo ocurre a menos de un chunk del límite
+  y el resultado es conservador: el objeto se marca incompleto y el exit es 2.
+- **`-j 0` se rechaza** (no significa "sin límite" ni "usar el default"): FR-13
+  define el rango como 1 ≤ N ≤ 32.
+- **`Writer.Do` no es reentrante:** dentro del callback hay que usar el `Section`,
+  no el `Writer`, o se produce un deadlock. Está documentado en el código.
+
+### Cómo se ejercita todo
+
+Contra GCS real, con los tests de integración (ADC configurado; el bucket sale de
+`GCSGREP_TEST_BUCKET` o de `gcsgrep/testenv.local.md`):
+
+```powershell
+cd gcsgrep
+go test -tags integration -v ./integration/
+# VC-13 exigiendo que -j 8 sea más rápido, y VC-21 con umbrales:
+$env:GCSGREP_REQUIRE_SPEEDUP = "1"
+$env:GCSGREP_BENCH_PREFIX = "perf500/"; $env:GCSGREP_BENCH_MIN = "15"; $env:GCSGREP_BENCH_FIRST_MAX = "2"
+go test -tags integration -v -run 'VC13|VC21' ./integration/
+```
+
+Y, a mano:
+
+```bash
+cd gcsgrep
+go vet ./...
+go test -race -count=5 ./...              # suite completa, repetida para exponer carreras
+go build -o /tmp/gcsgrep ./cmd/gcsgrep
+
+BUCKET=<test-bucket>   # contra GCS real
+
+# VC-14 / VC-20
+/tmp/gcsgrep -j 100 timeout "gs://${BUCKET}/logs/"; echo $?   # 2, sin llamadas a GCS
+
+# VC-13: mismo resultado, menos tiempo
+time /tmp/gcsgrep -c timeout "gs://${BUCKET}/perf/" | sort > seq.txt
+time /tmp/gcsgrep -c -j 8 timeout "gs://${BUCKET}/perf/" | sort > par.txt
+diff seq.txt par.txt                                          # sin diferencias
+
+# VC-19 con concurrencia
+/tmp/gcsgrep -j 8 --max-total-size 10MiB -c timeout "gs://${BUCKET}/"; echo $?   # 2
+```
