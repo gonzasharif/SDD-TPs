@@ -59,6 +59,8 @@ func run(argv []string) int {
 		MaxObjectSize: args.MaxObjectSize,
 		MaxTotalSize:  args.MaxTotalSize,
 		MaxLineSize:   int(args.MaxLineSize),
+
+		Concurrency: args.Concurrency,
 	}
 
 	return scanner.Run(ctx, client, cfg, m, w)

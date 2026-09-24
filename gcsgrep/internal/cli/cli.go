@@ -1,7 +1,7 @@
-// Package cli parses gcsgrep's argv into a structured Args value. Iteration
-// 2's surface is: gcsgrep [-i] [-n] [-l | -c] [--max N] [--max-object-size
-// SIZE] [--max-total-size SIZE] [--max-line-size SIZE] PATTERN
-// gs://bucket[/prefix].
+// Package cli parses gcsgrep's argv into a structured Args value. The
+// surface is: gcsgrep [-i] [-n] [-l | -c] [-j N | --concurrency N]
+// [--max N] [--max-object-size SIZE] [--max-total-size SIZE]
+// [--max-line-size SIZE] PATTERN gs://bucket[/prefix].
 package cli
 
 import (
@@ -31,9 +31,13 @@ type Args struct {
 	MaxObjectSize int64
 	MaxTotalSize  int64
 	MaxLineSize   int64
+	// Concurrency is FR-13's worker count: 1 (the default) up to
+	// scanner.MaxConcurrency. Parse never returns a value outside that
+	// range (FR-14, BR-6).
+	Concurrency int
 }
 
-const usage = "usage: gcsgrep [-i] [-l | -c] [--max N] [--max-object-size SIZE] [--max-total-size SIZE] [--max-line-size SIZE] PATTERN gs://bucket/prefix"
+const usage = "usage: gcsgrep [-i] [-l | -c] [-j N | --concurrency N] [--max N] [--max-object-size SIZE] [--max-total-size SIZE] [--max-line-size SIZE] PATTERN gs://bucket/prefix"
 
 // Parse parses argv (os.Args[1:]) into Args. On a usage error it returns a
 // message already meant for the user, matching the rest of gcsgrep's
@@ -56,6 +60,10 @@ func Parse(argv []string) (Args, error) {
 	fs.Var(&maxTotalSize, "max-total-size", "cap on the bytes read in the whole run, decompressed (0 disables it)")
 	maxLineSize := sizeValue(reader.DefaultMaxLineSize)
 	fs.Var(&maxLineSize, "max-line-size", "longest line that is matched; longer lines are skipped")
+	// -j is an alias of --concurrency: both write the same variable.
+	concurrency := scanner.DefaultConcurrency
+	fs.IntVar(&concurrency, "concurrency", scanner.DefaultConcurrency, "number of objects read in parallel (1-32)")
+	fs.IntVar(&concurrency, "j", scanner.DefaultConcurrency, "alias of --concurrency")
 
 	if err := fs.Parse(argv); err != nil {
 		return Args{}, fmt.Errorf("%s (%v)", usage, err)
@@ -65,6 +73,12 @@ func Parse(argv []string) (Args, error) {
 	// usage error can never cost a single API call (VC-7).
 	if *listOnly && *countOnly {
 		return Args{}, fmt.Errorf("-l and -c are mutually exclusive; %s", usage)
+	}
+
+	// FR-14 / BR-6: like FR-7, rejected before main builds a GCS client,
+	// so an out-of-range value never costs an API call (VC-14).
+	if concurrency < 1 || concurrency > scanner.MaxConcurrency {
+		return Args{}, fmt.Errorf("--concurrency must be between 1 and %d, got %d; %s", scanner.MaxConcurrency, concurrency, usage)
 	}
 
 	// A zero line buffer can't hold any line, so unlike the other two
@@ -95,6 +109,7 @@ func Parse(argv []string) (Args, error) {
 		MaxObjectSize: int64(maxObjectSize),
 		MaxTotalSize:  int64(maxTotalSize),
 		MaxLineSize:   int64(maxLineSize),
+		Concurrency:   concurrency,
 	}, nil
 }
 
