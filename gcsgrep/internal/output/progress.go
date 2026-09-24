@@ -21,8 +21,9 @@ const (
 
 const barWidth = 30
 
-// progress is the Writer's FR-10 state. Like Budget, it is not safe for
-// concurrent use until Iteration 3.
+// progress is the Writer's FR-10 state. It is only touched with the
+// Writer's lock held, which is what makes the shared counter safe when
+// several workers advance it at once (FR-13).
 type progress struct {
 	total, done int
 	lastStep    int  // last 10% step printed in ProgressLines
@@ -33,12 +34,16 @@ type progress struct {
 // StartProgress begins tracking a run over total objects. With a single
 // object (or none) there is nothing worth tracking, so nothing is shown.
 func (w *Writer) StartProgress(total int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	w.progress = progress{total: total}
 	w.drawBar()
 }
 
 // AdvanceProgress records one more processed object.
 func (w *Writer) AdvanceProgress() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	if !w.progressActive() {
 		return
 	}
@@ -58,6 +63,8 @@ func (w *Writer) AdvanceProgress() {
 // completed by a newline; in ProgressLines, a run that stopped early
 // (BR-5) still gets a final line showing where it stopped.
 func (w *Writer) FinishProgress() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	if !w.progressActive() {
 		return
 	}
@@ -74,6 +81,8 @@ func (w *Writer) FinishProgress() {
 	}
 	w.progress = progress{}
 }
+
+// The helpers below assume the Writer's lock is held.
 
 func (w *Writer) progressActive() bool {
 	return w.Progress != ProgressOff && w.progress.total > 1
