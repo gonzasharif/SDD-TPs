@@ -350,9 +350,9 @@ partido o perder uno que cae justo en el punto de corte.
 
 ### 13. Progreso
 
-**Elegido:** si `stderr` es una terminal, una barra con porcentaje
-(objetos procesados / total listado) que se redibuja cada vez que termina un
-objeto. Si no es una terminal, una línea simple cada 10% de objetos
+**Elegido:** si `stderr` es una terminal, una línea de progreso (objetos
+procesados / total listado y porcentaje) que se redibuja en el lugar cada vez
+que termina un objeto. Si no es una terminal, una línea simple cada 10% de objetos
 procesados, sin secuencias de redibujado.
 
 **Fundamento:** redibujar al terminar cada objeto es el mínimo que refleja

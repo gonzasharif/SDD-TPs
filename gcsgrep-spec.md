@@ -10,6 +10,20 @@
 > tiene un VC (criterio de verificación) concreto. El alcance por iteración
 > (qué entra en la Iteración 1 vs. después) vive en `gcsgrep-plan.md`, no acá.
 
+## Convenciones
+
+- **Sub-ítems.** Un requerimiento con sub-ítems (ej. FR-8.1, FR-8.2, FR-8.3)
+  se cumple solo si se cumplen **todos** sus sub-ítems. Un VC con sub-ítems
+  (ej. VC-8.1, VC-8.2, VC-8.3) pasa solo si pasan **todos**: alcanza con que
+  falle uno para que el VC falle.
+- **Un Dado, una situación.** Cada "Dado" describe una sola situación. Si un
+  comportamiento depende de más de una situación, se parte en sub-ítems.
+- **Vocabulario.** Los términos (objeto fallido, objeto salteado, aviso,
+  error, etc.) tienen el significado del glosario de
+  `gcsgrep-requirements.md`.
+- **Mensajes por `stderr`.** Un aviso empieza con el prefijo literal
+  `gcsgrep: warning: `; un mensaje de error, con `gcsgrep: error: `.
+
 ## Propósito
 
 Permitir buscar texto dentro del contenido de objetos de Google Cloud Storage
@@ -71,12 +85,14 @@ configuradas.
   streaming (sin materializar el objeto completo en disco) y busca el patrón
   línea por línea.
 
-**VC-1:** Contra un bucket de prueba con objetos de texto conocidos (algunos
-con match, otros sin match), ejecutar la búsqueda y verificar que se reportan
-exactamente los objetos y líneas esperados. Verificar además que en ningún
-momento se escribe un archivo temporal con el contenido completo de un objeto
-(inspección del directorio temp o de syscalls de escritura de archivo durante
-la corrida).
+**VC-1** (pasa solo si pasan VC-1.1 y VC-1.2):
+- **VC-1.1:** Contra un bucket de prueba con objetos de texto conocidos
+  (algunos con match, otros sin match), ejecutar la búsqueda y verificar que
+  se reportan exactamente los objetos y líneas esperados.
+- **VC-1.2:** Búsqueda estática en el código de `gcsgrep/`, excluyendo los
+  archivos `_test.go`: cero apariciones de `os.Create`, `os.CreateTemp`,
+  `os.WriteFile` y `os.OpenFile`, es decir, ningún camino de código puede
+  escribir el contenido de un objeto a disco.
 
 ### FR-2 — Búsqueda sobre bucket completo
 *(deriva de FR-b)*
@@ -93,16 +109,41 @@ de repetir la búsqueda por subprefijo.
 ### FR-3 — Formato de salida
 *(deriva de FR-c)*
 
-- **Dado** que se encontró al menos un match,
-- **Cuando** la herramienta imprime resultados en `stdout`,
-- **Entonces** cada resultado tiene el formato `objeto:línea:texto`, con el
-  texto matcheado resaltado en color ANSI si `stdout` es un TTY, y sin color
-  si `stdout` está redirigido (pipe o archivo).
+FR-3 se cumple solo si se cumplen FR-3.1, FR-3.2 y FR-3.3.
 
-**VC-3:** Ejecutar con `stdout` conectado a un pty (o forzando `isatty`) y
-verificar presencia de secuencias ANSI de color alrededor del match. Ejecutar
-con `stdout` redirigido a un archivo y verificar ausencia total de secuencias
-ANSI, con el mismo formato `objeto:línea:texto` en texto plano.
+#### FR-3.1 — Formato de cada resultado
+
+- **Dado** un match en la línea número `L` de un objeto,
+- **Cuando** la herramienta lo imprime en `stdout`,
+- **Entonces** imprime una línea con el formato `objeto:L:texto`, donde
+  `objeto` es el nombre de objeto y `texto` es la línea completa sin su `\n`
+  final.
+
+**VC-3.1:** Objeto `logs/a.log` cuya línea 2 es `ERROR timeout`, patrón
+`timeout`, `stdout` redirigido a un archivo. Verificar que el archivo
+contiene exactamente la línea `logs/a.log:2:ERROR timeout`.
+
+#### FR-3.2 — Color con `stdout` en una terminal
+
+- **Dado** que `stdout` es una terminal (TTY),
+- **Cuando** la herramienta imprime un resultado,
+- **Entonces** cada porción del texto que matchea el patrón queda entre la
+  secuencia ANSI de inicio `ESC[1;31m` y la de fin `ESC[0m` (`ESC` = byte
+  `0x1b`); el resto del formato de FR-3.1 no cambia.
+
+**VC-3.2:** Mismo objeto y patrón que VC-3.1, con `stdout` conectado a un
+pseudo-terminal (pty). Verificar que la salida es exactamente
+`logs/a.log:2:ERROR ESC[1;31mtimeoutESC[0m`.
+
+#### FR-3.3 — Sin color con `stdout` redirigido
+
+- **Dado** que `stdout` no es una terminal (está redirigido a un pipe o a un
+  archivo),
+- **Cuando** la herramienta imprime resultados,
+- **Entonces** la salida no contiene ningún byte `0x1b`.
+
+**VC-3.3:** Mismo objeto y patrón que VC-3.1, con `stdout` redirigido a un
+archivo. Verificar que el archivo no contiene ningún byte `0x1b`.
 
 ### FR-4 — Búsqueda case-insensitive (`-i`)
 *(deriva de FR-d)*
@@ -112,8 +153,11 @@ ANSI, con el mismo formato `objeto:línea:texto` en texto plano.
 - **Cuando** se ejecuta `gcsgrep -i PATRÓN ...`,
 - **Entonces** se reporta el match sin distinguir mayúsculas de minúsculas.
 
-**VC-4:** Objeto con la línea `TIMEOUT error` y patrón `timeout`. Con `-i`
-debe matchear; sin `-i` no debe matchear.
+**VC-4** (pasa solo si pasan VC-4.1 y VC-4.2), sobre un objeto cuya única
+línea con la palabra es `TIMEOUT error` y el patrón `timeout`:
+- **VC-4.1:** Con `-i`: la línea `TIMEOUT error` aparece en `stdout` y el
+  exit code es `0`.
+- **VC-4.2:** Sin `-i`: `stdout` queda vacío y el exit code es `1`.
 
 ### FR-5 — Listar solo objetos con match (`-l`)
 *(deriva de FR-d)*
@@ -155,50 +199,147 @@ contador de llamadas o un mock de cliente GCS).
 ### FR-8 — Exit codes estilo `grep`
 *(deriva de FR-e)*
 
-- **Dado** el resultado final de una corrida,
+FR-8 se cumple solo si se cumplen FR-8.1, FR-8.2 y FR-8.3.
+
+Cuenta como **error** a efectos de FR-8: un objeto fallido (FR-9), el
+guardrail de cantidad alcanzado (BR-3), un objeto cortado (BR-4), un escaneo
+incompleto (BR-5) y un error de uso (FR-7, FR-14).
+
+#### FR-8.1 — Exit 0
+
+- **Dado** una corrida con al menos un match y ningún error,
 - **Cuando** el proceso termina,
-- **Entonces** el exit code es `0` si hubo ≥1 match y cero errores; `1` si
-  hubo cero matches y cero errores; `2` si hubo algún error (objeto ilegible,
-  guardrail de objeto o acumulado alcanzado, o error de uso) —
-  independientemente de si hubo matches en otros objetos.
+- **Entonces** el exit code es `0`.
 
-**VC-8:** Tres corridas controladas contra un bucket de prueba: (a) con match
-garantizado y todos los objetos legibles → exit 0; (b) sin ningún match y
-todos los objetos legibles → exit 1; (c) con al menos un objeto sin permiso
-de lectura (ACL restringida) y matches en el resto → exit 2.
+**VC-8.1:** Corrida contra un prefijo de prueba donde todos los objetos se
+pueden leer y al menos uno tiene un match garantizado. Verificar exit code
+`0`.
 
-### FR-9 — Continuar ante objeto ilegible
+#### FR-8.2 — Exit 1
+
+- **Dado** una corrida sin ningún match y sin ningún error,
+- **Cuando** el proceso termina,
+- **Entonces** el exit code es `1`.
+
+**VC-8.2:** Corrida contra un prefijo de prueba donde todos los objetos se
+pueden leer y ninguno contiene el patrón. Verificar exit code `1`.
+
+#### FR-8.3 — Exit 2
+
+- **Dado** una corrida en la que ocurrió al menos un error,
+- **Cuando** el proceso termina,
+- **Entonces** el exit code es `2`, aunque haya habido matches en otros
+  objetos.
+
+**VC-8.3:** Corrida contra un prefijo de prueba con un objeto sin permiso de
+lectura y matches garantizados en el resto de los objetos. Verificar exit
+code `2`.
+
+### FR-9 — Un objeto fallido no interrumpe la corrida
 *(deriva de FR-f)*
 
-- **Dado** un objeto no accesible (permisos) o corrupto dentro del prefijo,
-- **Cuando** se lo encuentra durante la corrida,
-- **Entonces** se emite un warning por `stderr` con el nombre del objeto y la
-  causa, y la corrida continúa con el resto de los objetos.
+FR-9 se cumple solo si se cumplen FR-9.1, FR-9.2, FR-9.3 y FR-9.4.
 
-**VC-9:** Prefijo con 5 objetos legibles y 1 objeto con ACL que le niega
-lectura al usuario de prueba. Verificar que los 5 se procesan igual y que el
-objeto sin permiso aparece en un warning de `stderr`, no interrumpe la
-corrida.
+En todos los casos el aviso tiene el formato literal
+`gcsgrep: warning: <objeto>: <causa>`, donde `<objeto>` es el nombre de
+objeto; el objeto no aparece en `stdout`, y cuenta como error para FR-8.3.
+
+#### FR-9.1 — Objeto sin permiso de lectura
+
+- **Dado** un objeto listado cuya lectura GCS rechaza por falta de permiso
+  (HTTP 403),
+- **Cuando** la herramienta intenta leerlo,
+- **Entonces** emite por `stderr` el aviso con causa `permission denied` y
+  continúa con el resto de los objetos.
+
+**VC-9.1:** Prefijo con 5 objetos legibles, cada uno con un match
+garantizado, y el objeto `acl/denied.log` sin permiso de lectura para las
+credenciales de la corrida. Verificar que `stdout` contiene los 5 matches,
+que `stderr` contiene la línea
+`gcsgrep: warning: acl/denied.log: permission denied` y que el exit code es
+`2`.
+
+#### FR-9.2 — Objeto corrupto
+
+- **Dado** un objeto corrupto (objeto comprimido cuyo contenido gzip es
+  inválido),
+- **Cuando** la herramienta intenta descomprimirlo,
+- **Entonces** emite por `stderr` el aviso con causa `corrupt gzip data` y
+  continúa con el resto de los objetos.
+
+**VC-9.2:** Prefijo con `gz/ok.log` (un match garantizado) y `gz/bad.gz`
+(contenido de texto plano, sin formato gzip, con nombre `.gz`). Verificar
+que `stdout` contiene el match de `gz/ok.log`, que `stderr` contiene la
+línea `gcsgrep: warning: gz/bad.gz: corrupt gzip data` y que el exit code
+es `2`.
+
+#### FR-9.3 — Objeto que dejó de existir
+
+- **Dado** un objeto listado que ya no existe al momento de abrirlo (HTTP
+  404, porque se borró entre el listado y la lectura),
+- **Cuando** la herramienta intenta abrirlo,
+- **Entonces** emite por `stderr` el aviso con causa `object not found` y
+  continúa con el resto de los objetos.
+
+**VC-9.3:** Con un cliente de GCS simulado que lista `x/gone.log` y
+`x/ok.log` (un match garantizado) y responde 404 al abrir `x/gone.log`.
+Verificar que `stdout` contiene el match de `x/ok.log`, que `stderr`
+contiene la línea `gcsgrep: warning: x/gone.log: object not found` y que el
+exit code es `2`.
+
+#### FR-9.4 — Otro error permanente al abrir
+
+- **Dado** un objeto listado cuya apertura falla con un error HTTP 4xx
+  distinto de 403 y 404,
+- **Cuando** la herramienta intenta abrirlo,
+- **Entonces** emite por `stderr` el aviso con causa
+  `read failed: <mensaje de error devuelto por GCS>` y continúa con el resto
+  de los objetos.
+
+**VC-9.4:** Prefijo con `x/ok.log` (un match garantizado) y `x/csek.log`,
+subido cifrado con una clave provista por el cliente (CSEK), que GCS
+rechaza con HTTP 400 al leerlo sin la clave. Verificar que `stdout`
+contiene el match de `x/ok.log`, que `stderr` contiene una línea que
+empieza con `gcsgrep: warning: x/csek.log: read failed: ` y que el exit
+code es `2`.
 
 ### FR-10 — Progreso durante la corrida
 *(deriva de FR-g)*
 
-- **Dado** un prefijo con más de un objeto (el total ya se conoce de
-  antemano por el listado de BR-3),
-- **Cuando** la corrida está en curso,
-- **Entonces**, si `stderr` es una terminal (TTY), se muestra una barra de
-  progreso con porcentaje (`objetos procesados / total`) que se redibuja en
-  el lugar (como `git clone` o `brew install`); si `stderr` no es una
-  terminal (redirigido a archivo o pipe), se emiten en cambio líneas de
-  progreso simples a intervalos regulares, sin redibujado, para no ensuciar
-  un log con secuencias de control.
+FR-10 se cumple solo si se cumplen FR-10.1 y FR-10.2.
 
-**VC-10:** Dos escenarios. (a) Con `stderr` conectado a un pty (o forzando
-`isatty`), sobre un prefijo con ≥50 objetos: verificar que aparecen
-secuencias de redibujado (`\r`) y que el porcentaje mostrado crece de forma
-monótona hasta 100%. (b) Con `stderr` redirigido a un archivo, mismo
-prefijo: verificar que aparecen al menos 2 líneas de progreso simples antes
-de la línea final, sin ninguna secuencia `\r` en el archivo resultante.
+El **texto de progreso** es
+`gcsgrep: progress: <procesados>/<total> (<porcentaje>%)`, donde `<total>` es la cantidad de objetos listados,
+`<procesados>` la cantidad de objetos ya procesados (con o sin matches,
+salteados o fallidos) y `<porcentaje>` es `procesados × 100 / total`
+redondeado hacia abajo.
+
+#### FR-10.1 — `stderr` en una terminal
+
+- **Dado** que `stderr` es una terminal (TTY) y la corrida tiene más de un
+  objeto listado,
+- **Cuando** termina de procesarse cada objeto,
+- **Entonces** se redibuja en el lugar el texto de progreso (precedido por
+  `\r`, sin `\n`), y al terminar la corrida se emite un único `\n`.
+
+**VC-10.1:** Prefijo con 50 objetos, `stderr` conectado a un
+pseudo-terminal (pty). Verificar que `stderr` contiene exactamente 50
+redibujos (`\r` seguido del texto de progreso), con porcentajes 2, 4, …,
+100 en orden creciente, y que termina en `\n`.
+
+#### FR-10.2 — `stderr` redirigido
+
+- **Dado** que `stderr` no es una terminal (está redirigido a un pipe o a un
+  archivo) y la corrida tiene más de un objeto listado,
+- **Cuando** el porcentaje procesado alcanza o supera un nuevo múltiplo de 10
+  (10, 20, …, 100),
+- **Entonces** se emite una línea con el texto de progreso terminada en
+  `\n`, sin `\r`. Si un mismo objeto hace superar más de un múltiplo, se
+  emite una sola línea.
+
+**VC-10.2:** Mismo prefijo de 50 objetos que VC-10.1, con `stderr`
+redirigido a un archivo. Verificar que el archivo contiene exactamente 10
+líneas de progreso (10%, 20%, …, 100%, en ese orden) y ningún byte `\r`.
 
 ### FR-11 — Binarios se saltean
 *(deriva de BR-d del borrador; comportamiento disparado por un evento
@@ -322,11 +463,15 @@ bucket de millones de objetos, con el costo y tiempo que eso implica.
 **Excepciones:** el usuario puede levantar el límite explícitamente con
 `--max N`, o deshabilitarlo con `--max 0`.
 
-**VC-17:** Prefijo de prueba con más objetos que el límite por defecto (o
-límite bajo simulado, ej. `--max 5` sobre un prefijo con 10 objetos).
-Verificar que se aborta antes de cualquier lectura de contenido (0 llamadas
-de lectura de objeto, solo la llamada de listado), y que con `--max 20` (o
-`--max 0`) se procesan todos.
+**VC-17** (pasa solo si pasan VC-17.1, VC-17.2 y VC-17.3), sobre un prefijo
+de prueba con 10 objetos:
+- **VC-17.1:** Con `--max 5`: la corrida termina antes de leer contenido
+  (solo la llamada de listado, 0 llamadas de apertura de objeto) y el exit
+  code es `2`.
+- **VC-17.2:** Con `--max 20`: se procesan los 10 objetos (10 llamadas de
+  apertura).
+- **VC-17.3:** Con `--max 0`: se procesan los 10 objetos (10 llamadas de
+  apertura).
 
 ### BR-4 — Guardrail de tamaño por objeto
 *(deriva de BR-f del borrador, nuevo en el refinamiento)*
@@ -340,10 +485,11 @@ costo fuera de proporción.
 
 **Excepciones:** configurable con `--max-object-size`.
 
-**VC-18:** Objeto `.gz` de prueba que descomprime a más de 250 MiB (o límite
-bajo simulado con `--max-object-size` para acelerar el test). Verificar que
-la lectura se corta en el límite, se emite warning por `stderr`, y la corrida
-continúa con el resto de los objetos del prefijo.
+**VC-18:** Objeto `.gz` de prueba que descomprime a 2 MiB, con
+`--max-object-size` fijado en 1 MiB, junto a otro objeto con un match
+garantizado. Verificar que la lectura del `.gz` se corta en el límite, se
+emite warning por `stderr`, y la corrida continúa con el resto de los objetos
+del prefijo.
 
 ### BR-5 — Guardrail acumulado de la corrida
 *(deriva de BR-g del borrador, nuevo en el refinamiento)*
@@ -394,10 +540,14 @@ si el objeto con match está entre los primeros 50 listados, en redes de
 baja latencia. En entornos de latencia alta, `--concurrency` es la
 recomendación operativa, no el modo secuencial.
 
-**VC-21:** Correr un benchmark scripteado contra un bucket de prueba con
-≥500 objetos de ~1 MiB, midiendo tiempo total en modo secuencial y con
-`--concurrency 8`, y tiempo hasta el primer resultado impreso. Comparar
-contra los umbrales de arriba. El umbral secuencial (≥ 0.5 objetos/seg) ya
+**VC-21** (pasa solo si pasan VC-21.1, VC-21.2 y VC-21.3), con un benchmark
+scripteado contra un bucket de prueba con ≥500 objetos de ~1 MiB:
+- **VC-21.1:** Modo secuencial: throughput ≥ 0.5 objetos/seg.
+- **VC-21.2:** Con `--concurrency 8`: throughput ≥ 15 objetos/seg.
+- **VC-21.3:** Con el objeto con match entre los primeros 50 listados:
+  tiempo hasta el primer resultado impreso ≤ 2 segundos.
+
+El umbral secuencial (≥ 0.5 objetos/seg) ya
 se validó una vez, contra un bucket real desde un entorno de latencia alta
 (0.59 objetos/seg observado) — ver `gcsgrep-cobertura-vc.md`. El umbral con
 concurrencia queda pendiente de la Iteración 3.
@@ -422,27 +572,38 @@ reintenta hasta 3 intentos en total, con backoff exponencial (500ms, 1s, 2s
 ± 20% de jitter). Tras 3 fallos, el objeto se marca como fallido. Errores
 permanentes (403, 404) no se reintentan.
 
-**VC-23:** Con un proxy/mock de la API de GCS que simula: (a) 2 fallos
-transitorios seguidos de éxito → verificar que el objeto se procesa
-correctamente (recuperado, sin aparecer como fallido); (b) 3 fallos
-transitorios consecutivos → verificar que el objeto se marca como fallido
-(FR-9) tras exactamente 3 intentos; (c) un 403 → verificar que se marca como
-fallido inmediatamente, sin reintentos.
+**VC-23** (pasa solo si pasan VC-23.1, VC-23.2 y VC-23.3), con un proxy/mock
+de la API de GCS:
+- **VC-23.1:** 2 fallos transitorios seguidos de éxito → el objeto se procesa
+  correctamente (recuperado, sin aparecer como fallido).
+- **VC-23.2:** 3 fallos transitorios consecutivos → el objeto se marca como
+  fallido (FR-9) tras exactamente 3 intentos.
+- **VC-23.3:** un 403 → el objeto se marca como fallido inmediatamente, sin
+  reintentos (1 solo intento).
 
 ## Cobertura de VCs
 
 | Requisito | VC | Camino | Verificado por |
 |---|---|---|---|
-| FR-1 | VC-1 | feliz | Test de integración contra bucket de prueba |
+| FR-1 | VC-1.1 | feliz | Test de integración contra bucket de prueba |
+| FR-1 | VC-1.2 | invariante (sin escritura a disco) | Búsqueda estática en el código |
 | FR-2 | VC-2 | feliz | Test de integración |
-| FR-3 | VC-3 | borde (entorno TTY / pipe) | Test de integración (TTY simulado + pipe) |
-| FR-4 | VC-4 | feliz | Test de integración |
+| FR-3.1 | VC-3.1 | feliz | Test de integración (`stdout` a archivo) |
+| FR-3.2 | VC-3.2 | borde (`stdout` en TTY) | Test de integración con pty |
+| FR-3.3 | VC-3.3 | borde (`stdout` redirigido) | Test de integración (`stdout` a archivo) |
+| FR-4 | VC-4.1, VC-4.2 | feliz | Test de integración |
 | FR-5 | VC-5 | feliz | Test de integración + medición de bytes leídos |
 | FR-6 | VC-6 | feliz | Test de integración |
 | FR-7 | VC-7 | falla | Test unitario/CLI (validación de flags) |
-| FR-8 | VC-8 | feliz + falla (3 casos) | 3 tests de integración (match/no-match/error) |
-| FR-9 | VC-9 | falla (recuperable) | Test de integración con ACL restringida |
-| FR-10 | VC-10 | borde (entorno TTY / pipe) | Test de integración, captura de stderr |
+| FR-8.1 | VC-8.1 | feliz | Test de integración |
+| FR-8.2 | VC-8.2 | feliz (sin resultados) | Test de integración |
+| FR-8.3 | VC-8.3 | falla | Test de integración con objeto sin permiso |
+| FR-9.1 | VC-9.1 | falla (recuperable) | Test de integración con objeto sin permiso |
+| FR-9.2 | VC-9.2 | falla (recuperable) | Test de integración con `.gz` inválido |
+| FR-9.3 | VC-9.3 | falla (recuperable) | Test con cliente GCS simulado (404) |
+| FR-9.4 | VC-9.4 | falla (recuperable) | Test de integración con objeto CSEK |
+| FR-10.1 | VC-10.1 | borde (`stderr` en TTY) | Test de integración con pty |
+| FR-10.2 | VC-10.2 | borde (`stderr` redirigido) | Test de integración, captura de `stderr` a archivo |
 | FR-11 | VC-11 | borde (tipo de contenido) | Test de integración con objeto binario |
 | FR-12 | VC-12 | feliz | Test de integración con objeto .gz |
 | FR-13 | VC-13 | medición | Benchmark de concurrencia |
@@ -450,17 +611,19 @@ fallido inmediatamente, sin reintentos.
 | FR-15 | VC-24 | borde (línea extrema) | Test de integración con línea que excede el buffer |
 | BR-1 | VC-15 | invariante | Test de integración con credenciales de solo lectura |
 | BR-2 | VC-16 | invariante | Test de integración con ACL restringida |
-| BR-3 | VC-17 | borde (límite de cantidad) | Test de integración con prefijo grande |
+| BR-3 | VC-17.1 | borde (límite de cantidad) | Test de integración, conteo de llamadas |
+| BR-3 | VC-17.2, VC-17.3 | feliz (límite levantado / deshabilitado) | Test de integración, conteo de llamadas |
 | BR-4 | VC-18 | borde (límite de tamaño) | Test de integración con .gz grande |
 | BR-5 | VC-19 | borde (límite acumulado) | Test de integración con guardrail acumulado bajo |
 | BR-6 | VC-20 | falla | = VC-14 |
-| NFR-1 | VC-21 | medición | Benchmark de rendimiento |
+| NFR-1 | VC-21.1, VC-21.2, VC-21.3 | medición | Benchmark de rendimiento |
 | NFR-2 | VC-22 | medición | Benchmark de memoria (RSS) |
-| NFR-3 | VC-23 | feliz + falla (3 casos) | Test con proxy/mock de fallos de red |
+| NFR-3 | VC-23.1 | feliz (recuperación) | Test con proxy/mock de fallos de red |
+| NFR-3 | VC-23.2, VC-23.3 | falla | Test con proxy/mock de fallos de red |
 
-**15 FRs + 6 BRs + 3 NFRs = 24 requerimientos, 24 VCs, 0 huérfanos.** De los
-24, 9 ejercitan un camino de falla o borde y 2 son invariantes — no es una
-tabla de puro camino feliz.
+**15 FRs (23 FRs atómicos contando sub-ítems) + 6 BRs + 3 NFRs, 40 VCs
+atómicos, 0 requerimientos sin VC.** De los 40 VCs, 19 ejercitan un camino
+de falla o borde y 3 son invariantes — no es una tabla de puro camino feliz.
 
 ## Trazabilidad al borrador original
 
