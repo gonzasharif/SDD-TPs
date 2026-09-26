@@ -24,6 +24,13 @@ go vet ./...                              # sin warnings
 go test ./...                             # tests unitarios, incluidos los
                                           # chequeos estáticos de VC-1.2 y
                                           # VC-15.2 (internal/invariants)
+
+# VCs contra GCS real (datos de testdata/setup-testdata.sh):
+GCSGREP_TEST_BUCKET=<bucket> GCSGREP_TEST_CREDS=<dir> \
+  go test -tags integration -v -count=1 ./integration/
+# + mediciones de NFR-1/NFR-2 (VC-21, VC-22):
+GCSGREP_BENCH=1 GCSGREP_TEST_BUCKET=<bucket> \
+  go test -tags integration -v -count=1 -timeout 60m -run 'VC21|VC22' ./integration/
 ```
 
 El entorno de prueba real (proyecto de GCP, buckets, service accounts y

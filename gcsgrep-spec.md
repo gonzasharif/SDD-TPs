@@ -939,14 +939,15 @@ decisión de diseño 9).
 **VC-21** (pasa solo si pasan VC-21.1, VC-21.2 y VC-21.3), sobre el prefijo
 `perf/` (500 objetos de 1 MiB) del bucket de `us-central1`, con 3 corridas
 por medición y el valor mediano. Throughput = 500 / tiempo total, con el
-tiempo total medido con `/usr/bin/time` (tiempo real):
+tiempo total medido con el reloj de pared alrededor de cada corrida
+(`gcsgrep/integration`, con `GCSGREP_BENCH=1`):
 - **VC-21.1:** `gcsgrep needle gs://<bucket>/perf/`: throughput ≥ 0,5
   objetos/seg (tiempo total ≤ 1000 segundos).
 - **VC-21.2:** `gcsgrep --concurrency 8 needle gs://<bucket>/perf/`:
   throughput ≥ 3 × el throughput de VC-21.1 medido en la misma sesión.
-- **VC-21.3:** `gcsgrep needle gs://<bucket>/perf/`, con un script que
-  registra el instante de arranque del proceso y el instante en que lee el
-  primer byte de su `stdout`: diferencia ≤ 2 segundos.
+- **VC-21.3:** `gcsgrep needle gs://<bucket>/perf/`, registrando el instante
+  de arranque de la corrida y el instante en que se escribe el primer byte
+  en `stdout`: diferencia ≤ 2 segundos.
 
 ### NFR-2 — Memoria con objetos grandes
 
@@ -959,8 +960,9 @@ lectura por streaming en chunks de 64 KiB y buffer de línea de 1 MiB (FR-15).
 `gcsgrep --max-object-size 0 --max-total-size 0 needle gs://<bucket>/mem/small.log`
 y
 `gcsgrep --max-object-size 0 --max-total-size 0 needle gs://<bucket>/mem/large.log`,
-cada una 3 veces bajo `/usr/bin/time` (campo de RSS máximo: `-l` en macOS,
-`-v` en Linux), tomando el RSS máximo mediano de cada una. Verificar que
+cada una 3 veces como proceso aparte, leyendo su RSS máximo con `getrusage`
+(el mismo dato que reporta `/usr/bin/time`; requiere Linux o macOS) y
+tomando el RSS máximo mediano de cada una. Verificar que
 todas terminan con exit code `1` y que
 RSS máximo de `large.log` − RSS máximo de `small.log` ≤ 5 MiB
 (5.242.880 bytes).
@@ -1066,8 +1068,8 @@ VC-23.1 a VC-23.4 el prefijo simulado `r/` contiene solo `r/a.log` =
 | BR-3 | VC-17.2, VC-17.3 | feliz (límite levantado / deshabilitado) | Test de integración, conteo de llamadas |
 | BR-4 | VC-18 | borde (límite de tamaño) | Test de integración con .gz grande |
 | BR-5 | VC-19 | borde (límite acumulado) | Test de integración con guardrail acumulado bajo |
-| NFR-1 | VC-21.1, VC-21.2, VC-21.3 | medición | `/usr/bin/time` + script de latencia sobre `perf/` |
-| NFR-2 | VC-22 | medición | `/usr/bin/time` (RSS máximo) sobre `mem/` |
+| NFR-1 | VC-21.1, VC-21.2, VC-21.3 | medición | Tests de medición de `gcsgrep/integration` sobre `perf/` |
+| NFR-2 | VC-22 | medición | Test de medición de `gcsgrep/integration` (RSS con `getrusage`) sobre `mem/` |
 | NFR-3 | VC-23.1 | feliz (recuperación) | Test con cliente GCS simulado que inyecta errores |
 | NFR-3 | VC-23.2, VC-23.3, VC-23.4, VC-23.5 | falla | Test con cliente GCS simulado que inyecta errores |
 
