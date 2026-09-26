@@ -188,8 +188,8 @@ levantarlo:
 | Guardrail | Valor por defecto | Actúa | Se levanta con |
 |---|---|---|---|
 | Cantidad de objetos (BR-c) | 1000 objetos | Antes de leer contenido, después de listar | `--max N` (`--max 0` lo deshabilita) |
-| Tamaño por objeto (BR-f) | 250 MiB descomprimidos | Durante la lectura de cada objeto | `--max-object-size` |
-| Tamaño acumulado (BR-g) | 2 GiB descomprimidos | Durante toda la corrida | `--max-total-size` |
+| Tamaño por objeto (BR-f) | 250 MiB leídos (descomprimidos, si aplica) | Durante la lectura de cada objeto | `--max-object-size N` en bytes (`0` lo deshabilita) |
+| Tamaño acumulado (BR-g) | 2 GiB leídos (descomprimidos, si aplica) | Durante toda la corrida; corta también el objeto en curso | `--max-total-size N` en bytes (`0` lo deshabilita) |
 
 **Fundamento:** cada guardrail cubre un riesgo que los otros no ven:
 - *Cantidad:* frena un escaneo de un bucket enorme antes de leer un solo

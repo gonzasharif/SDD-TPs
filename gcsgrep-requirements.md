@@ -144,18 +144,20 @@ Todos derivan del borrador original (FR-a a FR-g).
   descomprimen al vuelo por streaming y se busca dentro del contenido
   descomprimido, tratado como texto (sujeto a la misma detección de binario de
   BR-d sobre el contenido ya descomprimido).
-- **BR-f** — Guardrail de tamaño descomprimido por
-  objeto: si el contenido descomprimido leído de un objeto supera **250 MiB**
-  (valor por defecto propuesto), se corta la lectura de ese objeto (objeto
-  cortado), se emite un aviso por `stderr` indicando que se alcanzó el límite,
-  y se continúa con el resto de los objetos. Configurable con
-  `--max-object-size`.
+- **BR-f** — Guardrail de tamaño por objeto: si el contenido leído de un
+  objeto (descomprimido, si es un objeto comprimido) supera **250 MiB** (valor
+  por defecto propuesto), se corta la lectura de ese objeto (objeto cortado),
+  se emite un aviso por `stderr` indicando que se alcanzó el límite, y se
+  continúa con el resto de los objetos. Configurable con `--max-object-size`
+  (en bytes; `0` lo deshabilita).
 - **BR-g** — Guardrail de tamaño descomprimido
   acumulado: si la suma de bytes descomprimidos leídos en toda la corrida
-  supera **2 GiB** (valor por defecto propuesto), la herramienta deja de leer
-  objetos nuevos, informa por `stderr` que el guardrail acumulado se alcanzó y
-  que hubo escaneo incompleto, y termina reportando los matches encontrados
-  hasta ese punto. Configurable con `--max-total-size`. Cuenta como error a
+  supera **2 GiB** (valor por defecto propuesto), la herramienta corta la
+  lectura en ese punto —incluido el objeto en curso— y no abre objetos nuevos,
+  informa por `stderr` que el guardrail acumulado se alcanzó y que hubo
+  escaneo incompleto, y termina reportando los matches encontrados hasta ese
+  punto. Configurable con `--max-total-size` (en bytes; `0` lo deshabilita).
+  Cuenta como error a
   efectos de FR-e (exit code 2).
 
 ## Requerimientos no funcionales
@@ -208,7 +210,7 @@ Todos derivan del borrador original (FR-a a FR-g).
 - Por defecto, `gcsgrep` lee los objetos **secuencialmente** (equivalente a
   `--concurrency 1`).
 - Se puede pedir lectura en paralelo con `--concurrency N` (alias `-j N`).
-- `N` está acotado a un máximo de **32**; valores mayores son un error de uso
+- `N` está acotado al rango **1–32**; valores fuera de ese rango son un error de uso
   (exit code 2) antes de arrancar la corrida, para que el flag no se use como
   forma implícita de saltear los guardrails de costo/carga sobre la API de
   GCS.

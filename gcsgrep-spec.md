@@ -23,6 +23,11 @@
   `gcsgrep-requirements.md`.
 - **Mensajes por `stderr`.** Un aviso empieza con el prefijo literal
   `gcsgrep: warning: `; un mensaje de error, con `gcsgrep: error: `.
+- **Tamaños.** 1 KiB = 1.024 bytes, 1 MiB = 1.024 KiB, 1 GiB = 1.024 MiB.
+  Los flags de tamaño reciben un entero en bytes.
+- **Trazabilidad.** "*(deriva de X)*" usa los IDs de
+  `gcsgrep-requirements.md` (base context refinado): FR-a a FR-g, BR-a a
+  BR-g, NFR-a a NFR-c.
 
 ## Propósito
 
@@ -45,7 +50,7 @@ configuradas.
 - Descompresión de `.gz` al vuelo; detección y salteo de binarios.
 - Guardrails de costo: cantidad de objetos, tamaño descomprimido por objeto,
   tamaño descomprimido acumulado.
-- Concurrencia configurable (worker pool, tope 32).
+- Concurrencia configurable (`--concurrency N`, tope 32).
 
 **Fuera de alcance (v1 completa, no solo Iteración 1):**
 - Regex completa tipo PCRE, o elegible por flag.
@@ -72,12 +77,12 @@ configuradas.
 - **Proceso consumidor** (actor secundario, no humano): un script o pipeline
   que invoca `gcsgrep` y reacciona a su exit code y/o parsea su `stdout`
   (FR-8). No interactúa con `stderr` de forma estructurada — ahí solo van
-  warnings y progreso, pensados para un humano.
+  avisos, mensajes de error y progreso, pensados para un humano.
 
 ## Requerimientos funcionales
 
 ### FR-1 — Búsqueda sobre un prefijo
-*(deriva de FR-a del borrador)*
+*(deriva de FR-a)*
 
 FR-1 se cumple solo si se cumplen FR-1.1, FR-1.2, FR-1.3 y FR-1.4.
 
@@ -225,16 +230,18 @@ nombre del objeto.
 que la salida reporta exactamente K.
 
 ### FR-7 — `-l` y `-c` son mutuamente excluyentes
-*(nuevo, surgido en el refinamiento)*
+*(deriva de FR-d)*
 
 - **Dado** que el usuario pasa `-l` y `-c` en la misma invocación,
 - **Cuando** se ejecuta `gcsgrep`,
-- **Entonces** no se realiza ninguna búsqueda, se imprime un error de uso por
-  `stderr`, y el proceso termina con exit code 2.
+- **Entonces** no se hace ninguna llamada a GCS, se emite el mensaje de error
+  `gcsgrep: error: -l and -c cannot be used together` y el exit code es `2`
+  (error de uso).
 
-**VC-7:** Invocar con ambos flags contra un bucket real. Verificar exit code 2
-y cero llamadas a la API de lectura de objetos (se puede instrumentar con un
-contador de llamadas o un mock de cliente GCS).
+**VC-7:** Ejecutar `gcsgrep -l -c timeout gs://<bucket>/logs/` con un
+cliente GCS que cuenta llamadas. Verificar exit code `2`, `stdout` vacío, la
+línea `gcsgrep: error: -l and -c cannot be used together` en `stderr` y cero
+llamadas a GCS.
 
 ### FR-8 — Exit codes estilo `grep`
 *(deriva de FR-e)*
@@ -383,77 +390,109 @@ redibujos (`\r` seguido del texto de progreso), con porcentajes 2, 4, …,
 redirigido a un archivo. Verificar que el archivo contiene exactamente 10
 líneas de progreso (10%, 20%, …, 100%, en ese orden) y ningún byte `\r`.
 
-### FR-11 — Binarios se saltean
-*(deriva de BR-d del borrador; comportamiento disparado por un evento
-concreto —encontrar un objeto binario—, por eso vive como FR y no como BR)*
+### FR-11 — Objetos binarios se saltean
+*(deriva de BR-d; comportamiento disparado por un evento concreto —encontrar
+un objeto binario—, por eso vive como FR y no como BR)*
 
-- **Dado** un objeto cuyos primeros 8 KiB contienen un byte nulo (`0x00`),
+- **Dado** un objeto binario (su contenido tiene un byte nulo `0x00` en los
+  primeros 8 KiB),
 - **Cuando** se lo encuentra durante la corrida,
-- **Entonces** se saltea sin intentar matchear contra su contenido, y se
-  emite un aviso por `stderr`.
+- **Entonces** es un objeto salteado: no se busca el patrón en su contenido,
+  se emite el aviso `gcsgrep: warning: <objeto>: skipped (binary object)` y
+  la corrida continúa. Un objeto salteado no cuenta como error.
 
-**VC-11:** Prefijo con un objeto binario (ej. una imagen) junto a objetos de
-texto con matches garantizados. Verificar que el binario nunca aparece en los
-resultados de match y sí aparece en un aviso de "salteado por binario", y que
-los objetos de texto se procesan con normalidad.
+**VC-11:** Prefijo `bin/` con `bin/icon.png` (una imagen PNG, cuya cabecera
+contiene bytes nulos) y `bin/a.log` (única línea `timeout`). Ejecutar
+`gcsgrep timeout gs://<bucket>/bin/`. Verificar que `stdout` es exactamente
+`bin/a.log:1:timeout`, que `stderr` contiene la línea
+`gcsgrep: warning: bin/icon.png: skipped (binary object)` y que el exit code
+es `0`.
 
-### FR-12 — Descompresión de `.gz` al vuelo
-*(deriva de BR-e del borrador; mismo criterio que FR-11)*
+### FR-12 — Descompresión de objetos comprimidos al vuelo
+*(deriva de BR-e, nueva en el refinamiento; mismo criterio que FR-11)*
 
-- **Dado** un objeto cuyo nombre termina en `.gz`,
+- **Dado** un objeto comprimido (su nombre termina en `.gz`),
 - **Cuando** se lo procesa,
-- **Entonces** se descomprime por streaming y se busca el patrón dentro del
-  contenido descomprimido, reportando el nombre del objeto `.gz` original (no
-  un nombre descomprimido), sujeto a los guardrails BR-4 y BR-5.
+- **Entonces** se descomprime por streaming, se aplica la detección de objeto
+  binario de FR-11 sobre los primeros 8 KiB del contenido **descomprimido**, y
+  se busca el patrón en el contenido descomprimido, reportando los matches con
+  el nombre de objeto original (terminado en `.gz`). Queda sujeto a BR-4 y
+  BR-5, medidos sobre bytes descomprimidos.
 
-**VC-12:** Objeto `.gz` de prueba con contenido de texto conocido y matches
-garantizados. Verificar que los matches se reportan con el nombre del objeto
-`.gz`, y que en ningún momento se escribe el contenido descomprimido a disco.
+**VC-12** (pasa solo si pasan VC-12.1 y VC-12.2):
+- **VC-12.1:** Prefijo `gz/` con `gz/app.log.gz`, que descomprime a
+  `INFO start\nERROR timeout\n`. Ejecutar `gcsgrep timeout gs://<bucket>/gz/`.
+  Verificar que `stdout` es exactamente `gz/app.log.gz:2:ERROR timeout` y que
+  el exit code es `0`.
+- **VC-12.2:** Prefijo `gzb/` con solo `gzb/icon.png.gz` (una imagen PNG
+  comprimida con gzip). Ejecutar `gcsgrep timeout gs://<bucket>/gzb/`.
+  Verificar que `stdout` queda vacío, que `stderr` contiene la línea
+  `gcsgrep: warning: gzb/icon.png.gz: skipped (binary object)` y que el exit
+  code es `1`.
 
 ### FR-13 — Concurrencia configurable
-*(deriva de la decisión de concurrencia)*
+*(deriva del requerimiento de concurrencia del base context)*
 
 - **Dado** el flag `--concurrency N` (alias `-j N`) con `1 ≤ N ≤ 32`,
 - **Cuando** se ejecuta `gcsgrep`,
-- **Entonces** se procesan hasta `N` objetos en simultáneo mediante un
-  worker pool que consume de una cola compartida de objetos a procesar.
+- **Entonces** hay como máximo `N` objetos abiertos para lectura al mismo
+  tiempo, y el conjunto de líneas de `stdout` es el mismo que en modo
+  secuencial (el orden sigue FR-19).
 
-**VC-13:** Sobre un prefijo con M objetos (M suficientemente grande para que
-la latencia de red domine), medir el tiempo total con `--concurrency 1` vs.
-`--concurrency 8` y verificar una reducción significativa de tiempo. Verificar
-también que el conjunto de objetos reportados es idéntico en ambos casos,
-independientemente del orden de impresión.
+**VC-13** (pasa solo si pasan VC-13.1 y VC-13.2), sobre un prefijo con 20
+objetos de texto, cada uno con 3 líneas que matchean:
+- **VC-13.1:** Con `--concurrency 4` y un cliente GCS que registra cuántos
+  streams hay abiertos a la vez: el máximo registrado es exactamente `4`.
+- **VC-13.2:** El conjunto de líneas de `stdout` con `--concurrency 4` es
+  idéntico al de la corrida con `--concurrency 1`.
 
 ### FR-14 — Tope de concurrencia
-*(deriva de la decisión de concurrencia)*
+*(deriva del requerimiento de concurrencia del base context; absorbe la
+antigua BR-6)*
 
-- **Dado** `--concurrency N` con `N > 32`,
+- **Dado** `--concurrency N` con `N` fuera del rango `1–32`,
 - **Cuando** se invoca `gcsgrep`,
-- **Entonces** se rechaza la ejecución con un error de uso por `stderr` y
-  exit code 2, sin iniciar ninguna operación de lectura sobre GCS.
+- **Entonces** no se hace ninguna llamada a GCS, se emite el mensaje de error
+  `gcsgrep: error: --concurrency must be between 1 and 32 (got <N>)` y el
+  exit code es `2` (error de uso).
 
-**VC-14:** Invocar con `--concurrency 100`. Verificar exit code 2 y cero
-llamadas a la API de lectura de objetos.
+*Fundamento:* evitar que el flag se use como forma implícita de saltear los
+guardrails de costo/carga, generando picos de tráfico contra la API de GCS
+que un solo usuario no debería poder producir sin querer. *Excepciones:*
+ninguna en v1 (no hay forma de levantar este tope).
 
-### FR-15 — Líneas que exceden el buffer se saltean
-*(nuevo, surgido en el refinamiento — corrige un riesgo de falso negativo:
-truncar una línea para matchear podría partir un match real justo en el
-punto de corte y perderlo silenciosamente)*
+**VC-14** (pasa solo si pasan VC-14.1 y VC-14.2), con un cliente GCS que
+cuenta llamadas:
+- **VC-14.1:** `gcsgrep --concurrency 100 timeout gs://<bucket>/logs/`: exit
+  code `2`, la línea
+  `gcsgrep: error: --concurrency must be between 1 and 32 (got 100)` en
+  `stderr` y cero llamadas a GCS.
+- **VC-14.2:** `gcsgrep --concurrency 0 timeout gs://<bucket>/logs/`: exit
+  code `2`, la línea
+  `gcsgrep: error: --concurrency must be between 1 and 32 (got 0)` en
+  `stderr` y cero llamadas a GCS.
 
-- **Dado** un objeto con una línea cuyo tamaño supera el buffer configurado
-  (1 MiB por defecto, `--max-line-size`),
+### FR-15 — Líneas de más de 1 MiB se saltean
+*(deriva de NFR-b — corrige un riesgo de falso negativo: truncar una línea
+para matchear podría partir un match real justo en el punto de corte y
+perderlo silenciosamente)*
+
+- **Dado** un objeto con una línea de más de 1 MiB (1.048.576 bytes, sin
+  contar el `\n`),
 - **Cuando** se la encuentra durante la lectura por streaming,
-- **Entonces** esa línea se saltea por completo —no se busca el patrón en
-  ninguna porción de ella—, y se emite un warning por `stderr` la primera vez
-  que esto ocurre en un objeto (una única vez por objeto afectado, no una vez
-  por cada línea larga).
+- **Entonces** es una línea salteada: no se busca el patrón en ninguna
+  porción de ella, y se emite el aviso
+  `gcsgrep: warning: <objeto>: skipped lines longer than 1 MiB` una única vez
+  por objeto afectado, sin importar cuántas líneas largas tenga. Una línea
+  salteada no cuenta como error.
 
-**VC-24:** Objeto con una línea de 5 MiB que contiene un match real embebido
-en algún punto de esa línea (ej. en el byte 2 MiB). Verificar que ese match
-**no** se reporta (a diferencia de un truncado parcial, que podría reportarlo
-partido o de forma inconsistente), que el resto de las líneas normales del
-mismo objeto se procesan con normalidad, y que aparece exactamente un warning
-por `stderr` para ese objeto — no uno por cada línea larga si hay varias.
+**VC-24:** Objeto `long/x.log` con 4 líneas: línea 1 `timeout antes`; línea
+2 de 5 MiB con `timeout` en el byte 2.097.152; línea 3 `timeout despues`;
+línea 4 de 2 MiB sin `timeout`. Ejecutar `gcsgrep timeout gs://<bucket>/long/`.
+Verificar que `stdout` es exactamente `long/x.log:1:timeout antes` y
+`long/x.log:3:timeout despues`, que `stderr` contiene exactamente una línea
+`gcsgrep: warning: long/x.log: skipped lines longer than 1 MiB` y que el
+exit code es `0`.
 
 ### FR-16 — La ubicación no se puede usar
 *(deriva de FR-b y de las decisiones de diseño 2 y 3)*
@@ -660,81 +699,88 @@ escalamiento de acceso.
 **Excepciones:** ninguna.
 
 **VC-16:** Con credenciales que tienen acceso a un subconjunto de objetos del
-prefijo (ACL a nivel de objeto), verificar que los objetos sin permiso se
-reportan como fallidos (FR-9) y en ningún momento su contenido aparece en la
-salida.
+prefijo (ACL a nivel de objeto), verificar que los objetos sin permiso
+quedan como objetos fallidos (FR-9.1) y en ningún momento su contenido
+aparece en la salida.
 
 ### BR-3 — Guardrail de cantidad de objetos
 *(deriva de BR-c)*
 
 **Regla:** antes de leer contenido, `gcsgrep` lista y cuenta los objetos bajo
-el prefijo. Si la cantidad supera el límite (1000 por defecto), aborta antes
-de leer ningún contenido.
+el prefijo. Si la cantidad supera el límite (1000 por defecto), no abre
+ningún objeto, emite el mensaje de error
+`gcsgrep: error: the prefix has <N> objects, which exceeds the limit of <límite> (use --max to raise it, or --max 0 to disable it)`
+y termina con exit code `2`.
 
 **Fundamento:** evitar que un uso descuidado escanee accidentalmente un
 bucket de millones de objetos, con el costo y tiempo que eso implica.
 
-**Excepciones:** el usuario puede levantar el límite explícitamente con
-`--max N`, o deshabilitarlo con `--max 0`.
+**Excepciones:** `--max N`, con `N` entero positivo, reemplaza el límite;
+`--max 0` lo deshabilita.
 
 **VC-17** (pasa solo si pasan VC-17.1, VC-17.2 y VC-17.3), sobre un prefijo
 de prueba con 10 objetos:
-- **VC-17.1:** Con `--max 5`: la corrida termina antes de leer contenido
-  (solo la llamada de listado, 0 llamadas de apertura de objeto) y el exit
-  code es `2`.
+- **VC-17.1:** Con `--max 5`: solo la llamada de listado y 0 llamadas de
+  apertura de objeto, `stdout` vacío, la línea
+  `gcsgrep: error: the prefix has 10 objects, which exceeds the limit of 5 (use --max to raise it, or --max 0 to disable it)`
+  en `stderr` y exit code `2`.
 - **VC-17.2:** Con `--max 20`: se procesan los 10 objetos (10 llamadas de
   apertura).
 - **VC-17.3:** Con `--max 0`: se procesan los 10 objetos (10 llamadas de
   apertura).
 
 ### BR-4 — Guardrail de tamaño por objeto
-*(deriva de BR-f del borrador, nuevo en el refinamiento)*
+*(deriva de BR-f, nueva en el refinamiento)*
 
-**Regla:** si el contenido descomprimido leído de un objeto supera 250 MiB,
-se corta la lectura de ese objeto y se continúa con el resto.
+**Regla:** si el contenido leído de un objeto (descomprimido, si es un objeto
+comprimido) supera el límite (250 MiB por defecto), se corta la lectura de
+ese objeto en ese punto: el objeto queda como objeto cortado, se emite el
+aviso
+`gcsgrep: warning: <objeto>: object size limit of <límite> bytes reached, rest of the object not read`,
+los matches del objeto ya impresos se mantienen y la corrida continúa con el
+resto de los objetos. Un objeto cortado cuenta como error (FR-8.3).
 
-**Fundamento:** protección contra un objeto `.gz` que se expande de forma
-desproporcionada (deliberada o accidentalmente) y consume tiempo, memoria o
-costo fuera de proporción.
+**Fundamento:** protección contra un objeto que consume tiempo, memoria o
+costo fuera de proporción — un objeto comprimido que se expande de forma
+desproporcionada (deliberada o accidentalmente) o un objeto de texto
+enorme.
 
-**Excepciones:** configurable con `--max-object-size`.
+**Excepciones:** `--max-object-size N`, con `N` en bytes, reemplaza el
+límite; `--max-object-size 0` lo deshabilita.
 
-**VC-18:** Objeto `.gz` de prueba que descomprime a 2 MiB, con
-`--max-object-size` fijado en 1 MiB, junto a otro objeto con un match
-garantizado. Verificar que la lectura del `.gz` se corta en el límite, se
-emite warning por `stderr`, y la corrida continúa con el resto de los objetos
-del prefijo.
+**VC-18:** Prefijo `big/` con `big/app.log.gz`, que descomprime a 2 MiB de
+líneas `INFO`, y `big/ok.log` (única línea `timeout`). Ejecutar
+`gcsgrep --max-object-size 1048576 timeout gs://<bucket>/big/`. Verificar que
+`stderr` contiene la línea
+`gcsgrep: warning: big/app.log.gz: object size limit of 1048576 bytes reached, rest of the object not read`,
+que `stdout` es exactamente `big/ok.log:1:timeout` y que el exit code es `2`.
 
 ### BR-5 — Guardrail acumulado de la corrida
-*(deriva de BR-g del borrador, nuevo en el refinamiento)*
+*(deriva de BR-g, nueva en el refinamiento)*
 
-**Regla:** si la suma de bytes descomprimidos leídos en toda la corrida
-supera 2 GiB, se deja de leer objetos nuevos y se termina informando lo
-encontrado hasta ese punto.
+**Regla:** si la suma de bytes leídos en toda la corrida (descomprimidos, en
+los objetos comprimidos) supera el límite (2 GiB por defecto), se corta la
+lectura en ese punto —incluido el objeto en curso—, no se abre ningún objeto
+más, se emite el mensaje de error
+`gcsgrep: error: total size limit of <límite> bytes reached, scan incomplete`,
+los matches ya impresos se mantienen y el exit code es `2` (escaneo
+incompleto).
 
 **Fundamento:** control de costo total de la corrida completa (no solo por
 objeto individual) — leer de GCS se cobra por bytes.
 
-**Excepciones:** configurable con `--max-total-size`.
+**Excepciones:** `--max-total-size N`, con `N` en bytes, reemplaza el
+límite; `--max-total-size 0` lo deshabilita.
 
-**VC-19:** Prefijo con suficientes objetos para superar un
-`--max-total-size` bajo (ej. 10 MiB, para que el test corra rápido).
-Verificar que la herramienta deja de leer objetos nuevos al cruzar el límite,
-reporta los matches encontrados hasta el corte, emite el aviso
-correspondiente por `stderr`, y termina con exit code 2 (por FR-8).
-
-### BR-6 — Tope de concurrencia
-*(deriva de la decisión de concurrencia, complementa FR-14)*
-
-**Regla:** el valor de `--concurrency` está acotado a un máximo de 32.
-
-**Fundamento:** evitar que el flag se use como forma implícita de saltear
-los guardrails de costo/carga, generando picos de tráfico contra la API de
-GCS que un solo usuario no debería poder producir sin querer.
-
-**Excepciones:** ninguna en v1 (no hay forma de levantar este tope).
-
-**VC-20:** idéntico a VC-14.
+**VC-19:** Prefijo `tot/` con 5 objetos de 1 MiB (`tot/1.log` … `tot/5.log`),
+cada uno con `timeout` como línea 1 y relleno sin `timeout` en el resto.
+Ejecutar en modo secuencial
+`gcsgrep --max-total-size 2621440 timeout gs://<bucket>/tot/` (2,5 MiB) con
+un cliente GCS que cuenta aperturas. Verificar que `stdout` es exactamente
+`tot/1.log:1:timeout`, `tot/2.log:1:timeout` y `tot/3.log:1:timeout`, que
+hubo exactamente 3 aperturas, que `stderr` contiene la línea
+`gcsgrep: error: total size limit of 2621440 bytes reached, scan incomplete`
+y que el exit code es `2`.
 
 ## Requerimientos no funcionales
 
@@ -783,16 +829,16 @@ al tamaño del objeto) — ej. diferencia ≤ 20 MiB.
 
 **Umbral:** un error transitorio (timeout, conexión reseteada, 5xx) se
 reintenta hasta 3 intentos en total, con backoff exponencial (500ms, 1s, 2s
-± 20% de jitter). Tras 3 fallos, el objeto se marca como fallido. Errores
+± 20% de jitter). Tras 3 fallos, el objeto queda como objeto fallido. Errores
 permanentes (403, 404) no se reintentan.
 
 **VC-23** (pasa solo si pasan VC-23.1, VC-23.2 y VC-23.3), con un proxy/mock
 de la API de GCS:
 - **VC-23.1:** 2 fallos transitorios seguidos de éxito → el objeto se procesa
-  correctamente (recuperado, sin aparecer como fallido).
-- **VC-23.2:** 3 fallos transitorios consecutivos → el objeto se marca como
-  fallido (FR-9) tras exactamente 3 intentos.
-- **VC-23.3:** un 403 → el objeto se marca como fallido inmediatamente, sin
+  correctamente (recuperado, sin quedar como objeto fallido).
+- **VC-23.2:** 3 fallos transitorios consecutivos → el objeto queda como
+  objeto fallido (FR-9) tras exactamente 3 intentos.
+- **VC-23.3:** un 403 → el objeto queda como objeto fallido inmediatamente, sin
   reintentos (1 solo intento).
 
 ## Cobertura de VCs
@@ -810,7 +856,7 @@ de la API de GCS:
 | FR-4 | VC-4.1, VC-4.2 | feliz | Test de integración |
 | FR-5 | VC-5 | feliz | Test de integración + medición de bytes leídos |
 | FR-6 | VC-6 | feliz | Test de integración |
-| FR-7 | VC-7 | falla | Test unitario/CLI (validación de flags) |
+| FR-7 | VC-7 | falla (error de uso) | Test CLI con cliente que cuenta llamadas |
 | FR-8.1 | VC-8.1 | feliz | Test de integración |
 | FR-8.2 | VC-8.2 | feliz (sin resultados) | Test de integración |
 | FR-8.3 | VC-8.3 | falla | Test de integración con objeto sin permiso |
@@ -821,9 +867,10 @@ de la API de GCS:
 | FR-10.1 | VC-10.1 | borde (`stderr` en TTY) | Test de integración con pty |
 | FR-10.2 | VC-10.2 | borde (`stderr` redirigido) | Test de integración, captura de `stderr` a archivo |
 | FR-11 | VC-11 | borde (tipo de contenido) | Test de integración con objeto binario |
-| FR-12 | VC-12 | feliz | Test de integración con objeto .gz |
-| FR-13 | VC-13 | medición | Benchmark de concurrencia |
-| FR-14 | VC-14 | falla | Test unitario/CLI (validación de flags) |
+| FR-12 | VC-12.1 | feliz | Test de integración con objeto .gz |
+| FR-12 | VC-12.2 | borde (binario comprimido) | Test de integración con .gz de una imagen |
+| FR-13 | VC-13.1, VC-13.2 | feliz | Test con cliente que registra streams abiertos |
+| FR-14 | VC-14.1, VC-14.2 | falla (error de uso) | Test CLI con cliente que cuenta llamadas |
 | FR-15 | VC-24 | borde (línea extrema) | Test de integración con línea que excede el buffer |
 | FR-16.1 | VC-25.1 | falla (error de uso) | Test CLI con cliente que cuenta llamadas |
 | FR-16.2 | VC-25.2 | falla (sin credenciales) | Corrida real con entorno sin ADC |
@@ -842,40 +889,44 @@ de la API de GCS:
 | BR-3 | VC-17.2, VC-17.3 | feliz (límite levantado / deshabilitado) | Test de integración, conteo de llamadas |
 | BR-4 | VC-18 | borde (límite de tamaño) | Test de integración con .gz grande |
 | BR-5 | VC-19 | borde (límite acumulado) | Test de integración con guardrail acumulado bajo |
-| BR-6 | VC-20 | falla | = VC-14 |
 | NFR-1 | VC-21.1, VC-21.2, VC-21.3 | medición | Benchmark de rendimiento |
 | NFR-2 | VC-22 | medición | Benchmark de memoria (RSS) |
 | NFR-3 | VC-23.1 | feliz (recuperación) | Test con proxy/mock de fallos de red |
 | NFR-3 | VC-23.2, VC-23.3 | falla | Test con proxy/mock de fallos de red |
 
-**21 FRs (37 FRs atómicos contando sub-ítems) + 6 BRs + 3 NFRs, 53 VCs
-atómicos, 0 requerimientos sin VC.** De los 53 VCs, 29 ejercitan un camino
+**21 FRs (37 FRs atómicos contando sub-ítems) + 5 BRs + 3 NFRs, 55 VCs
+atómicos, 0 requerimientos sin VC.** De los 55 VCs, 30 ejercitan un camino
 de falla o borde y 3 son invariantes — no es una tabla de puro camino feliz.
 
-## Trazabilidad al borrador original
+## Trazabilidad al base context refinado
 
-| Spec | Borrador (`gcsgrep-requirements.md`) |
+La columna derecha usa los IDs de `gcsgrep-requirements.md`. FR-a a FR-g y
+BR-a a BR-d ya estaban en el borrador original (commit `c84efbc`); BR-e,
+BR-f y BR-g son nuevas en el refinamiento.
+
+| Spec | Base context refinado (`gcsgrep-requirements.md`) |
 |---|---|
 | FR-1, FR-2 | FR-a, FR-b |
 | FR-3 | FR-c |
-| FR-4, FR-5, FR-6, FR-7 | FR-d |
+| FR-4, FR-5, FR-6, FR-7, FR-20 | FR-d |
 | FR-8 | FR-e |
 | FR-9 | FR-f |
 | FR-10 | FR-g |
-| FR-11 | BR-d (promovido a FR, sin BR equivalente) |
-| FR-12 | BR-e (promovido a FR, sin BR equivalente) |
-| FR-13, FR-14, BR-6 | Decisión de concurrencia (sin equivalente en el borrador) |
+| FR-11 | BR-d (promovida a FR) |
+| FR-12 | BR-e (nueva en el refinamiento; promovida a FR) |
+| FR-13, FR-14 | Requerimiento de concurrencia (FR-14 absorbe la antigua BR-6) |
 | FR-15 | NFR-b (memoria) — promovido a FR, corrige riesgo de falso negativo detectado en revisión |
 | FR-16 | FR-b + decisiones de diseño 2 (autenticación) y 3 (ubicación) |
 | FR-17 | Decisión de diseño 8 (ubicación sin objetos) |
 | FR-18 | FR-b (prefijo sin `/` final) |
 | FR-19 | Requerimiento de concurrencia (orden de salida) + decisión de diseño 9 |
-| FR-20 | FR-d (`-n`) |
 | FR-21 | FR-a + definición de "línea" del glosario |
 | BR-1 | BR-a |
 | BR-2 | BR-b |
 | BR-3 | BR-c |
-| BR-4, BR-5 | Sin equivalente — surgidas en el refinamiento |
+| BR-4 | BR-f (nueva en el refinamiento) |
+| BR-5 | BR-g (nueva en el refinamiento) |
+| NFR-1, NFR-2, NFR-3 | NFR-a, NFR-b, NFR-c |
 
 ## Preguntas abiertas
 
