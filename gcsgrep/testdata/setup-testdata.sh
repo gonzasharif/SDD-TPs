@@ -39,7 +39,9 @@ put() {
 }
 
 # fill <línea> <bytes> : repite <línea> (con su \n) hasta completar <bytes>.
-fill() { yes "$1" | head -c "$2"; }
+# `yes` termina con SIGPIPE cuando `head` corta; con `set -o pipefail` eso
+# haría abortar el script en silencio, por eso el `|| true`.
+fill() { yes "$1" | head -c "$2" || true; }
 
 # chars <carácter> <bytes> : <bytes> repeticiones de <carácter>, sin \n.
 chars() { head -c "$2" /dev/zero | tr '\0' "$1"; }
