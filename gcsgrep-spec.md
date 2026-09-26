@@ -83,9 +83,9 @@ configuradas.
 
 Todos los VCs que corren contra GCS usan estos datos, en el proyecto de GCP de
 prueba (región `us-central1`). Los nombres reales del proyecto, de los
-buckets y de las service accounts no se versionan: están en
-`gcsgrep/testenv.local.md`. En la spec se escriben como `<bucket>`,
-`<bucket-completo>` y `<sa-…>`. En los contenidos, `\n` es un salto de línea.
+bucket y de las service accounts no se versionan: están en
+`gcsgrep/testenv.local.md`. En la spec se escriben como `<bucket>` y
+`<sa-…>`. En los contenidos, `\n` es un salto de línea.
 Todos estos datos y credenciales se crean con
 `gcsgrep/testdata/setup-testdata.sh`.
 
@@ -93,15 +93,10 @@ Todos estos datos y credenciales se crean con
 
 | Nombre | Permisos | Usada en |
 |---|---|---|
-| ADC del usuario | Lectura y escritura sobre ambos buckets | Todos los VCs que no nombran otra credencial |
+| ADC del usuario | Lectura y escritura sobre `<bucket>` | Todos los VCs que no nombran otra credencial |
 | `<sa-viewer>` | `roles/storage.objectViewer` sobre `<bucket>` | VC-15.1 |
 | `<sa-restringida>` | `roles/storage.objectViewer` sobre `<bucket>` con la IAM Condition `resource.name != "projects/_/buckets/<bucket>/objects/acl/denied.log"` | VC-8.3, VC-9.1, VC-16 |
 | `<sa-sin-rol>` | Ningún rol sobre `<bucket>` | VC-25.3 |
-
-### Bucket `<bucket-completo>`
-
-Solo lo usa VC-2. Contiene exactamente 4 objetos, cada uno con el contenido
-`timeout\n`: `a/1.log`, `b/2.log`, `c/d/3.log` y `raiz.log`.
 
 ### Bucket `<bucket>`
 
@@ -131,7 +126,10 @@ Solo lo usa VC-2. Contiene exactamente 4 objetos, cada uno con el contenido
 | `e/` | `e/empty.log` = 0 bytes; `e/a.log` = `timeout\n` | VC-30.1 |
 | `n/` | `n/last.log` = `uno\ndos timeout` (sin `\n` final) | VC-30.2 |
 
-`prefijo-sin-objetos/` (VC-26) no tiene ningún objeto. Los VCs que usan un
+`prefijo-sin-objetos/` (VC-26) no tiene ningún objeto. El bucket puede tener
+además otros objetos que ningún VC busca por prefijo (por ejemplo, los de la
+verificación de la versión anterior de la spec, movidos a `legacy-iter1/`);
+VC-2.2 los cuenta junto con el resto. Los VCs que usan un
 "cliente GCS simulado" (VC-1.4, VC-7, VC-9.3, VC-13.1, VC-14.x, VC-23.x,
 VC-25.1, VC-31.x) no dependen de estos datos: el cliente simulado define sus propios
 objetos.
@@ -204,10 +202,20 @@ llamadas de listado o apertura.
 - **Entonces** la búsqueda cubre todos los objetos de texto del bucket,
   sujeta al guardrail de cantidad (BR-3).
 
-**VC-2:** Ejecutar `gcsgrep timeout gs://<bucket-completo>/`. Verificar que
-`stdout` es exactamente, en este orden: `a/1.log:1:timeout`,
-`b/2.log:1:timeout`, `c/d/3.log:1:timeout` y `raiz.log:1:timeout`, y que el
-exit code es `0`.
+**VC-2** (pasa solo si pasan VC-2.1 y VC-2.2):
+- **VC-2.1:** Con un cliente GCS simulado cuyo bucket contiene exactamente
+  `a/1.log`, `b/2.log`, `c/d/3.log` y `raiz.log` (= `timeout\n` cada uno),
+  ejecutar `gcsgrep timeout gs://<bucket>/`. Verificar que el listado se
+  pidió con prefijo vacío, que `stdout` es exactamente, en este orden,
+  `a/1.log:1:timeout`, `b/2.log:1:timeout`, `c/d/3.log:1:timeout` y
+  `raiz.log:1:timeout`, y que el exit code es `0`.
+- **VC-2.2:** Contra el bucket real, ejecutar
+  `gcsgrep --max 1 timeout gs://<bucket>/` y contar sus objetos con
+  `gcloud storage ls "gs://<bucket>/**" | wc -l` (= `N`). Verificar que
+  `stderr` es exactamente
+  `gcsgrep: error: the prefix has N objects, which exceeds the limit of 1 (use --max to raise it, or --max 0 to disable it)`
+  y que el exit code es `2`: el listado sin prefijo alcanzó todos los objetos
+  del bucket, de todos sus prefijos, sin leer contenido (BR-3).
 
 ### FR-3 — Formato de salida
 *(deriva de FR-c)*
@@ -1012,7 +1020,8 @@ VC-23.1 a VC-23.4 el prefijo simulado `r/` contiene solo `r/a.log` =
 | FR-1.2 | VC-1.2 | invariante (sin escritura a disco) | Búsqueda estática en el código |
 | FR-1.3 | VC-1.3 | feliz (sintaxis RE2) | Test de integración |
 | FR-1.4 | VC-1.4 | falla (error de uso) | Test CLI con cliente que cuenta llamadas |
-| FR-2 | VC-2 | feliz | Test de integración |
+| FR-2 | VC-2.1 | feliz | Test con cliente GCS simulado (listado con prefijo vacío) |
+| FR-2 | VC-2.2 | feliz | Corrida real contra el bucket completo con `--max 1` |
 | FR-3.1 | VC-3.1 | feliz | Test de integración (`stdout` a archivo) |
 | FR-3.2 | VC-3.2 | borde (`stdout` en TTY) | Test de integración con pty |
 | FR-3.3 | VC-3.3 | borde (`stdout` redirigido) | Test de integración (`stdout` a archivo) |
@@ -1062,8 +1071,8 @@ VC-23.1 a VC-23.4 el prefijo simulado `r/` contiene solo `r/a.log` =
 | NFR-3 | VC-23.1 | feliz (recuperación) | Test con cliente GCS simulado que inyecta errores |
 | NFR-3 | VC-23.2, VC-23.3, VC-23.4, VC-23.5 | falla | Test con cliente GCS simulado que inyecta errores |
 
-**22 FRs (41 FRs atómicos contando sub-ítems) + 5 BRs + 3 NFRs, 62 VCs
-atómicos, 0 requerimientos sin VC.** De los 62 VCs, 36 ejercitan un camino
+**22 FRs (41 FRs atómicos contando sub-ítems) + 5 BRs + 3 NFRs, 63 VCs
+atómicos, 0 requerimientos sin VC.** De los 63 VCs, 36 ejercitan un camino
 de falla o borde y 4 son invariantes — no es una tabla de puro camino feliz.
 
 ## Trazabilidad al base context refinado

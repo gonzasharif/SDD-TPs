@@ -1,17 +1,23 @@
 #!/usr/bin/env bash
 # Crea en GCS los datos de prueba de la sección "Datos de prueba" de
-# gcsgrep-spec.md: los objetos de <bucket> y <bucket-completo>, y las service
-# accounts <sa-viewer>, <sa-restringida> y <sa-sin-rol>.
+# gcsgrep-spec.md: los objetos de <bucket> y las service accounts
+# <sa-viewer>, <sa-restringida> y <sa-sin-rol>.
 #
 # Uso (los valores reales están en gcsgrep/testenv.local.md, no versionado):
 #
-#   PROJECT=mi-proyecto BUCKET=mi-bucket BUCKET_COMPLETO=mi-bucket-completo \
-#     ./testdata/setup-testdata.sh [objetos|cuentas|todo]
+#   PROJECT=mi-proyecto BUCKET=mi-bucket ./testdata/setup-testdata.sh [objetos|cuentas|todo]
+#
+#   objetos   sube los objetos de <bucket> (alcanza con permisos sobre el bucket)
+#   cuentas   crea las 3 service accounts y sus permisos (requiere
+#             roles/iam.serviceAccountAdmin en el proyecto). Por defecto le da
+#             permiso de impersonarlas a la cuenta activa de gcloud; con
+#             IMPERSONATOR=usuario@dominio se lo da a otra persona.
+#   todo      las dos cosas
 #
 # Requiere: gcloud autenticado con permisos de administración sobre el
-# proyecto, bash, gzip, base64, openssl, yes y head. Ambos buckets deben
-# existir en us-central1 con uniform bucket-level access habilitado (lo
-# necesita la IAM Condition de <sa-restringida>).
+# proyecto, bash, gzip, base64, openssl, yes y head. El bucket debe existir
+# en us-central1 con uniform bucket-level access habilitado (lo necesita la
+# IAM Condition de <sa-restringida>).
 #
 # Subir perf/ (500 MiB), mem/ (505 MiB) y l/ (100 MiB) tarda: a ~1 MB/s son
 # unos 20 minutos.
@@ -19,7 +25,6 @@ set -euo pipefail
 
 : "${PROJECT:?definí PROJECT}"
 : "${BUCKET:?definí BUCKET}"
-: "${BUCKET_COMPLETO:?definí BUCKET_COMPLETO}"
 MODE="${1:-todo}"
 
 WORK="$(mktemp -d)"
@@ -45,12 +50,6 @@ png() {
 }
 
 objetos() {
-  echo "== <bucket-completo> (VC-2)"
-  for name in a/1.log b/2.log c/d/3.log raiz.log; do
-    printf 'timeout\n' > "$WORK/obj"
-    gcloud storage cp --quiet "$WORK/obj" "gs://$BUCKET_COMPLETO/$name"
-  done
-
   echo "== <bucket>"
   printf 'INFO start\nERROR timeout\n' | put logs/a.log
   printf 'INFO ok\n' | put logs/b.log
@@ -116,7 +115,7 @@ objetos() {
 
 cuentas() {
   local me viewer restringida sinrol
-  me="$(gcloud config get-value account)"
+  me="${IMPERSONATOR:-$(gcloud config get-value account)}"
   viewer="gcsgrep-viewer@$PROJECT.iam.gserviceaccount.com"
   restringida="gcsgrep-restringida@$PROJECT.iam.gserviceaccount.com"
   sinrol="gcsgrep-sin-rol@$PROJECT.iam.gserviceaccount.com"

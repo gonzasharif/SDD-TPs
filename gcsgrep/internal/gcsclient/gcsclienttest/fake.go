@@ -30,9 +30,9 @@ type Fake struct {
 	Objects []Object
 	ListErr error
 
-	mu        sync.Mutex
-	listCalls int
-	opened    []string
+	mu           sync.Mutex
+	listPrefixes []string
+	opened       []string
 }
 
 var _ gcsclient.Client = (*Fake)(nil)
@@ -40,7 +40,7 @@ var _ gcsclient.Client = (*Fake)(nil)
 // List returns the objects whose name starts with prefix, in slice order.
 func (f *Fake) List(ctx context.Context, bucket, prefix string) ([]gcsclient.ObjectInfo, error) {
 	f.mu.Lock()
-	f.listCalls++
+	f.listPrefixes = append(f.listPrefixes, prefix)
 	f.mu.Unlock()
 
 	if f.ListErr != nil {
@@ -78,9 +78,14 @@ func (f *Fake) Open(ctx context.Context, bucket, object string) (io.ReadCloser, 
 
 // ListCalls is how many times List was called.
 func (f *Fake) ListCalls() int {
+	return len(f.ListPrefixes())
+}
+
+// ListPrefixes is the prefix passed to each List call, in call order.
+func (f *Fake) ListPrefixes() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.listCalls
+	return append([]string(nil), f.listPrefixes...)
 }
 
 // Opened is the names passed to Open, in call order.

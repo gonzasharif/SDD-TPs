@@ -61,6 +61,22 @@ func TestRun_Results(t *testing.T) {
 	expect(t, run(t, client, cfg("logs/"), "timeout"), ExitMatch, "logs/a.log:2:ERROR timeout\n", "")
 }
 
+// VC-2.1 / FR-2: a location without prefix lists the whole bucket (empty
+// prefix) and covers objects under every prefix.
+func TestRun_WholeBucket(t *testing.T) {
+	client := &gcsclienttest.Fake{Objects: []gcsclienttest.Object{
+		{Name: "a/1.log", Content: "timeout\n"},
+		{Name: "b/2.log", Content: "timeout\n"},
+		{Name: "c/d/3.log", Content: "timeout\n"},
+		{Name: "raiz.log", Content: "timeout\n"},
+	}}
+	expect(t, run(t, client, cfg(""), "timeout"), ExitMatch,
+		"a/1.log:1:timeout\nb/2.log:1:timeout\nc/d/3.log:1:timeout\nraiz.log:1:timeout\n", "")
+	if got := client.ListPrefixes(); len(got) != 1 || got[0] != "" {
+		t.Errorf("List prefixes = %q, want exactly one call with the empty prefix", got)
+	}
+}
+
 // VC-8.2: no matches and no errors, exit 1.
 func TestRun_NoMatch(t *testing.T) {
 	client := &gcsclienttest.Fake{Objects: []gcsclienttest.Object{

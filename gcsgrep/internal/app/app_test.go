@@ -101,6 +101,21 @@ func TestRun_Search(t *testing.T) {
 	}
 }
 
+// VC-2.1 / FR-2: gs://bucket/ reaches the scanner as an empty prefix.
+func TestRun_WholeBucketLocation(t *testing.T) {
+	fake := &gcsclienttest.Fake{Objects: []gcsclienttest.Object{
+		{Name: "a/1.log", Content: "timeout\n"},
+		{Name: "raiz.log", Content: "timeout\n"},
+	}}
+	got := runWith(fake, nil, "timeout", "gs://b/")
+	if got.code != 0 || got.stdout != "a/1.log:1:timeout\nraiz.log:1:timeout\n" {
+		t.Errorf("got %+v", got)
+	}
+	if p := fake.ListPrefixes(); len(p) != 1 || p[0] != "" {
+		t.Errorf("List prefixes = %q, want [\"\"]", p)
+	}
+}
+
 // VC-29 / FR-20: -n produces byte-identical stdout, stderr and exit code.
 func TestRun_NFlagHasNoEffect(t *testing.T) {
 	without := runWith(logsData(), nil, "timeout", "gs://b/logs/")

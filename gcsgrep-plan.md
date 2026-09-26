@@ -42,8 +42,8 @@ accounts se crean con `gcsgrep/testdata/setup-testdata.sh`.
 | 3 | Concurrencia y rendimiento | FR-13, FR-14, FR-19.2 | — | NFR-1 (completo: VC-21.2) |
 
 Los 22 FRs (41 atómicos), 5 BRs y 3 NFRs de la spec quedan cubiertos entre
-las tres iteraciones, y cada uno de los 62 VCs está en los criterios de
-éxito de exactamente una iteración (40 + 16 + 6).
+las tres iteraciones, y cada uno de los 63 VCs está en los criterios de
+éxito de exactamente una iteración (41 + 16 + 6).
 
 ## Iteración 1 — Búsqueda mínima viable, segura por diseño
 
@@ -117,11 +117,11 @@ detectable por un script cuando la invocación o la ubicación no sirven.
   verificable; la concurrencia es una optimización de rendimiento, no una
   corrección funcional.
 
-**Criterios de éxito** (40 VCs)
+**Criterios de éxito** (41 VCs)
 
 - [ ] VC-1.1, VC-1.2, VC-1.3, VC-1.4 — búsqueda, sin escritura a disco, RE2,
       patrón inválido
-- [ ] VC-2 — bucket completo
+- [ ] VC-2.1, VC-2.2 — bucket completo
 - [ ] VC-3.1, VC-3.3 — formato en texto plano, sin bytes ANSI
 - [ ] VC-4.1, VC-4.2 — `-i`
 - [ ] VC-8.1, VC-8.2, VC-8.3 — exit codes 0/1/2
@@ -156,8 +156,8 @@ gcsgrep patron_inexistente_xyz gs://<bucket>/logs/
 gcsgrep -i timeout gs://<bucket>/case/
 # case/a.log:1:TIMEOUT error — exit 0
 
-gcsgrep timeout gs://<bucket-completo>/
-# 4 resultados de 4 prefijos distintos, exit 0
+gcsgrep --max 1 timeout gs://<bucket>/
+# "the prefix has N objects, ..." con N = todos los objetos del bucket, exit 2
 
 gcsgrep timeout gs://<bucket>/bin/
 # bin/a.log:1:timeout; aviso "skipped (binary object)" para bin/icon.png, exit 0
