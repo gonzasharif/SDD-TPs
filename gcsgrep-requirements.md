@@ -133,7 +133,7 @@ Todos derivan del borrador original (FR-a a FR-g).
 - **BR-c** — Guardrail de cantidad de objetos: antes
   de leer contenido, `gcsgrep` lista y cuenta los objetos bajo el prefijo
   (operación de listado, barata en costo de GCS). Si la cantidad supera
-  **1000 objetos** (valor por defecto propuesto, sin validar con benchmark),
+  **1000 objetos** (valor por defecto),
   aborta antes de leer ningún contenido, con un mensaje de error que indica
   cómo levantar el límite. Se levanta con `--max N`, o `--max 0` para
   deshabilitarlo explícitamente.
@@ -146,13 +146,13 @@ Todos derivan del borrador original (FR-a a FR-g).
   BR-d sobre el contenido ya descomprimido).
 - **BR-f** — Guardrail de tamaño por objeto: si el contenido leído de un
   objeto (descomprimido, si es un objeto comprimido) supera **250 MiB** (valor
-  por defecto propuesto), se corta la lectura de ese objeto (objeto cortado),
+  por defecto), se corta la lectura de ese objeto (objeto cortado),
   se emite un aviso por `stderr` indicando que se alcanzó el límite, y se
   continúa con el resto de los objetos. Configurable con `--max-object-size`
   (en bytes; `0` lo deshabilita).
 - **BR-g** — Guardrail de tamaño descomprimido
   acumulado: si la suma de bytes descomprimidos leídos en toda la corrida
-  supera **2 GiB** (valor por defecto propuesto), la herramienta corta la
+  supera **2 GiB** (valor por defecto), la herramienta corta la
   lectura en ese punto —incluido el objeto en curso— y no abre objetos nuevos,
   informa por `stderr` que el guardrail acumulado se alcanzó y que hubo
   escaneo incompleto, y termina reportando los matches encontrados hasta ese
@@ -162,29 +162,20 @@ Todos derivan del borrador original (FR-a a FR-g).
 
 ## Requerimientos no funcionales
 
-> Los umbrales de esta sección son una propuesta inicial de partida.
-> Corresponde validarlos con un benchmark real (bucket de prueba, objetos de
-> tamaño representativo) antes de congelarlos en la spec formal.
-
-- **NFR-a — Rendimiento.** Sobre un bucket en la misma región que el cliente,
-  con objetos de ~1 MiB promedio:
-  - Throughput con `--concurrency 8`: ≥ 15 objetos/seg en condiciones de red
-    de baja latencia (mismo datacenter/región). En redes de latencia alta la
-    concurrencia sigue dando una mejora sustancial sobre el modo secuencial
-    (medido: 4.6x con 8 workers desde un entorno de latencia alta — ver
-    `gcsgrep-cobertura-vc.md`), aunque el número absoluto dependa de la red.
-  - Throughput en modo secuencial (default, sin flag): **≥ 0.5 objetos/seg**,
-    incluso en redes de latencia alta donde el throughput de una sola
-    conexión queda acotado por RTT/ventana TCP y no por el código (medido:
-    0.59 objetos/seg contra un bucket real desde un entorno de latencia
-    alta; se investigó buffer de lectura más grande y range-reads paralelos
-    sobre un mismo objeto, ninguno mejoró el número — el techo es de red, no
-    de implementación). En redes de baja latencia se espera bastante más.
+- **NFR-a — Rendimiento.** Sobre un prefijo de 500 objetos de 1 MiB, en un
+  bucket de `us-central1`:
+  - Throughput en modo secuencial (default, sin flag): **≥ 0,5 objetos/seg**.
+    Medido en la Iteración 1: 0,59 objetos/seg desde un entorno de latencia
+    alta, donde el throughput de una sola conexión queda acotado por la red y
+    no por el código (se investigó un buffer de lectura más grande y lecturas
+    por rango en paralelo sobre un mismo objeto; ninguno mejoró el número).
+  - Throughput con `--concurrency 8`: **≥ 3 veces** el throughput secuencial
+    medido en la misma sesión (medido en la Iteración 1: 4,6 veces). El umbral
+    es relativo porque el valor absoluto depende de la red hacia GCS.
     **`--concurrency` es la recomendación operativa en redes de latencia
-    alta, no depender del modo secuencial.**
-  - Latencia al primer resultado: ≤ 2 segundos, si el primer objeto con match
-    está entre los primeros 50 objetos listados, en condiciones de red de
-    baja latencia.
+    alta.**
+  - Latencia al primer resultado, en modo secuencial y con el match en la
+    línea 1 del primer objeto listado: **≤ 2 segundos**.
 - **NFR-b — Memoria con objetos grandes.** El uso de memoria por objeto en
   proceso es constante respecto de su tamaño total: lectura por streaming en
   chunks de 64 KiB, con un buffer de línea acotado a **1 MiB** (valor fijo en
@@ -192,9 +183,10 @@ Todos derivan del borrador original (FR-a a FR-g).
   **línea salteada** (no se busca el patrón en ninguna porción de ella) y se
   emite un aviso una única vez por objeto afectado — no se trunca para
   matchear, porque un truncado partiría un match real que cayera justo en el
-  punto de corte y lo perdería en silencio. Memoria adicional estimada:
-  ≤ 5 MiB por objeto en procesamiento simultáneo, por lo que con concurrencia
-  N el uso adicional escala como ~5×N MiB.
+  punto de corte y lo perdería en silencio. Memoria adicional: ≤ 5 MiB por
+  objeto en procesamiento simultáneo (procesar un objeto de 500 MiB no usa
+  más de 5 MiB de RSS por encima de procesar uno de 5 MiB), así que con
+  concurrencia N el uso adicional es ≤ 5 × N MiB.
 - **NFR-c — Comportamiento ante fallos de red.** Un error transitorio de red
   (timeout, conexión reseteada, 5xx) al listar el prefijo o al abrir un objeto
   se reintenta hasta **3 intentos en total**, con backoff exponencial entre

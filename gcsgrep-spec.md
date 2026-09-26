@@ -12,9 +12,9 @@
 
 ## Convenciones
 
-- **Sub-ítems.** Un requerimiento con sub-ítems (ej. FR-8.1, FR-8.2, FR-8.3)
-  se cumple solo si se cumplen **todos** sus sub-ítems. Un VC con sub-ítems
-  (ej. VC-8.1, VC-8.2, VC-8.3) pasa solo si pasan **todos**: alcanza con que
+- **Sub-ítems.** Un requerimiento con sub-ítems (como FR-8.1, FR-8.2 y
+  FR-8.3) se cumple solo si se cumplen **todos** sus sub-ítems. Un VC con
+  sub-ítems (como VC-8.1, VC-8.2 y VC-8.3) pasa solo si pasan **todos**: alcanza con que
   falle uno para que el VC falle.
 - **Un Dado, una situación.** Cada "Dado" describe una sola situación. Si un
   comportamiento depende de más de una situación, se parte en sub-ítems.
@@ -78,6 +78,61 @@ configuradas.
   que invoca `gcsgrep` y reacciona a su exit code y/o parsea su `stdout`
   (FR-8). No interactúa con `stderr` de forma estructurada — ahí solo van
   avisos, mensajes de error y progreso, pensados para un humano.
+
+## Datos de prueba
+
+Todos los VCs que corren contra GCS usan estos datos, en el proyecto de GCP de
+prueba (región `us-central1`). Los nombres reales del proyecto, de los
+buckets y de las service accounts no se versionan: están en
+`gcsgrep/testenv.local.md`. En la spec se escriben como `<bucket>`,
+`<bucket-completo>` y `<sa-…>`. En los contenidos, `\n` es un salto de línea.
+
+### Credenciales
+
+| Nombre | Permisos | Usada en |
+|---|---|---|
+| ADC del usuario | Lectura y escritura sobre ambos buckets | Todos los VCs que no nombran otra credencial |
+| `<sa-viewer>` | `roles/storage.objectViewer` sobre `<bucket>` | VC-15.1 |
+| `<sa-restringida>` | `roles/storage.objectViewer` sobre `<bucket>` con la IAM Condition `resource.name != "projects/_/buckets/<bucket>/objects/acl/denied.log"` | VC-8.3, VC-9.1, VC-16 |
+| `<sa-sin-rol>` | Ningún rol sobre `<bucket>` | VC-25.3 |
+
+### Bucket `<bucket-completo>`
+
+Solo lo usa VC-2. Contiene exactamente 4 objetos, cada uno con el contenido
+`timeout\n`: `a/1.log`, `b/2.log`, `c/d/3.log` y `raiz.log`.
+
+### Bucket `<bucket>`
+
+| Prefijo | Objetos y contenido | Usado en |
+|---|---|---|
+| `logs/` | `logs/a.log` = `INFO start\nERROR timeout\n`; `logs/b.log` = `INFO ok\n` | VC-1.1, VC-3.x, VC-8.1, VC-8.2, VC-25.x, VC-29 |
+| `v/` | `v/a.log` = `version 1.2\nversion 1x2\n` | VC-1.3 |
+| `case/` | `case/a.log` = `TIMEOUT error\n` | VC-4.x |
+| `l/` | `l/big.log` = 100 MiB: línea 1 `timeout`, resto líneas `INFO ok` | VC-5 |
+| `c/` | `c/none.log` = `INFO ok\n`; `c/three.log` = `timeout 1\nINFO\ntimeout 2\nINFO\ntimeout 3\n` | VC-6 |
+| `acl/` | `acl/1.log` … `acl/5.log` = `timeout\n` cada uno; `acl/denied.log` = `secreto timeout\n` | VC-8.3, VC-9.1, VC-16 |
+| `gzbad/` | `gzbad/ok.log` = `timeout\n`; `gzbad/bad.gz` = `esto no es gzip\n` (texto plano con nombre `.gz`) | VC-9.2 |
+| `x/` | `x/ok.log` = `timeout\n`; `x/csek.log` = `timeout\n`, subido con una clave de cifrado provista por el cliente (CSEK) | VC-9.4 |
+| `prog/` | `prog/00.log` … `prog/49.log` = `INFO ok\n` cada uno | VC-10.x |
+| `bin/` | `bin/icon.png` = una imagen PNG; `bin/a.log` = `timeout\n` | VC-11 |
+| `gz/` | `gz/app.log.gz` = gzip de `INFO start\nERROR timeout\n` | VC-12.1 |
+| `gzb/` | `gzb/icon.png.gz` = gzip de una imagen PNG | VC-12.2 |
+| `conc/` | `conc/00.log` … `conc/19.log` = `match 1\nmatch 2\nmatch 3\n` cada uno | VC-13.x, VC-28.2 |
+| `max/` | `max/00.log` … `max/09.log` = `timeout\n` cada uno | VC-17.x |
+| `big/` | `big/app.log.gz` = gzip de 2 MiB de líneas `INFO`; `big/ok.log` = `timeout\n` | VC-18 |
+| `tot/` | `tot/1.log` … `tot/5.log` = 1 MiB cada uno: línea 1 `timeout`, resto líneas `INFO` | VC-19 |
+| `perf/` | `perf/000.log` … `perf/499.log` = 1 MiB cada uno de líneas `INFO ok`; `perf/000.log` tiene además `needle` como línea 1 | VC-21.x |
+| `mem/` | `mem/small.log` = 5 MiB de líneas `INFO ok`; `mem/large.log` = 500 MiB de líneas `INFO ok` | VC-22 |
+| `long/` | `long/x.log` = línea 1 `timeout antes`; línea 2 de 5 MiB con `timeout` en el byte 2.097.152; línea 3 `timeout despues`; línea 4 de 2 MiB sin `timeout` | VC-24 |
+| `pfx/` | `pfx/logs/a.log`, `pfx/logs-old/b.log`, `pfx/other/c.log` = `timeout\n` cada uno | VC-27 |
+| `ord/` | `ord/b.log`, `ord/a.log`, `ord/c.log` (subidos en ese orden) = `match 1\nmatch 2\n` cada uno | VC-28.1 |
+| `e/` | `e/empty.log` = 0 bytes; `e/a.log` = `timeout\n` | VC-30.1 |
+| `n/` | `n/last.log` = `uno\ndos timeout` (sin `\n` final) | VC-30.2 |
+
+`prefijo-sin-objetos/` (VC-26) no tiene ningún objeto. Los VCs que usan un
+"cliente GCS simulado" (VC-1.4, VC-7, VC-9.3, VC-13.1, VC-14.x, VC-23.x,
+VC-25.1) no dependen de estos datos: el cliente simulado define sus propios
+objetos.
 
 ## Requerimientos funcionales
 
@@ -147,9 +202,10 @@ llamadas de listado o apertura.
 - **Entonces** la búsqueda cubre todos los objetos de texto del bucket,
   sujeta al guardrail de cantidad (BR-3).
 
-**VC-2:** Bucket de prueba con objetos bajo múltiples prefijos distintos;
-confirmar que una sola invocación sin prefijo los cubre todos, sin necesidad
-de repetir la búsqueda por subprefijo.
+**VC-2:** Ejecutar `gcsgrep timeout gs://<bucket-completo>/`. Verificar que
+`stdout` es exactamente, en este orden: `a/1.log:1:timeout`,
+`b/2.log:1:timeout`, `c/d/3.log:1:timeout` y `raiz.log:1:timeout`, y que el
+exit code es `0`.
 
 ### FR-3 — Formato de salida
 *(deriva de FR-c)*
@@ -198,11 +254,11 @@ archivo. Verificar que el archivo no contiene ningún byte `0x1b`.
 - **Cuando** se ejecuta `gcsgrep -i PATRÓN ...`,
 - **Entonces** se reporta el match sin distinguir mayúsculas de minúsculas.
 
-**VC-4** (pasa solo si pasan VC-4.1 y VC-4.2), sobre un objeto cuya única
-línea con la palabra es `TIMEOUT error` y el patrón `timeout`:
-- **VC-4.1:** Con `-i`: la línea `TIMEOUT error` aparece en `stdout` y el
-  exit code es `0`.
-- **VC-4.2:** Sin `-i`: `stdout` queda vacío y el exit code es `1`.
+**VC-4** (pasa solo si pasan VC-4.1 y VC-4.2), sobre el prefijo `case/`:
+- **VC-4.1:** `gcsgrep -i timeout gs://<bucket>/case/`: `stdout` es
+  exactamente `case/a.log:1:TIMEOUT error` y el exit code es `0`.
+- **VC-4.2:** `gcsgrep timeout gs://<bucket>/case/`: `stdout` queda vacío y
+  el exit code es `1`.
 
 ### FR-5 — Listar solo objetos con match (`-l`)
 *(deriva de FR-d)*
@@ -213,10 +269,10 @@ línea con la palabra es `TIMEOUT error` y el patrón `timeout`:
   únicamente el nombre del objeto (sin número de línea ni texto), una sola
   vez por objeto.
 
-**VC-5:** Objeto de gran tamaño con un match garantizado en la primera línea.
-Verificar que la cantidad de bytes leídos del objeto es consistente con un
-corte temprano (no se lee el objeto completo) y que la salida es solo el
-nombre del objeto.
+**VC-5:** Ejecutar `gcsgrep -l timeout gs://<bucket>/l/` con un cliente GCS
+que cuenta los bytes leídos de cada stream. Verificar que `stdout` es
+exactamente `l/big.log`, que el exit code es `0` y que se leyeron ≤ 1 MiB
+(1.048.576 bytes) de los 100 MiB de `l/big.log`.
 
 ### FR-6 — Contar matches por objeto (`-c`)
 *(deriva de FR-d)*
@@ -224,10 +280,12 @@ nombre del objeto.
 - **Dado** el flag `-c`,
 - **Cuando** se procesa un objeto completo,
 - **Entonces** se imprime `objeto:cantidad`, donde `cantidad` es el total de
-  líneas que matchean.
+  líneas que matchean, incluso si es `0`. Un objeto salteado o un objeto
+  fallido no imprime línea de conteo (no se procesó completo).
 
-**VC-6:** Objeto con K líneas que matchean (K conocido de antemano). Verificar
-que la salida reporta exactamente K.
+**VC-6:** Ejecutar `gcsgrep -c timeout gs://<bucket>/c/`. Verificar que
+`stdout` es exactamente `c/none.log:0` y `c/three.log:3`, en ese orden, y
+que el exit code es `0`.
 
 ### FR-7 — `-l` y `-c` son mutuamente excluyentes
 *(deriva de FR-d)*
@@ -251,8 +309,9 @@ FR-8 se cumple solo si se cumplen FR-8.1, FR-8.2 y FR-8.3.
 Cuenta como **error** a efectos de FR-8: un objeto fallido (FR-9), el
 guardrail de cantidad alcanzado (BR-3), un objeto cortado (BR-4), un escaneo
 incompleto (BR-5), un error de uso (FR-1.4, FR-7, FR-14, FR-16.1), la falta
-de credenciales ADC (FR-16.2), el listado denegado (FR-16.3) y un bucket
-inexistente (FR-16.4). Una ubicación sin objetos **no** es un error (FR-17).
+de credenciales ADC (FR-16.2), el listado denegado (FR-16.3), un bucket
+inexistente (FR-16.4) y un listado que falla tras agotar los reintentos
+(NFR-3). Una ubicación sin objetos **no** es un error (FR-17).
 
 #### FR-8.1 — Exit 0
 
@@ -260,9 +319,7 @@ inexistente (FR-16.4). Una ubicación sin objetos **no** es un error (FR-17).
 - **Cuando** el proceso termina,
 - **Entonces** el exit code es `0`.
 
-**VC-8.1:** Corrida contra un prefijo de prueba donde todos los objetos se
-pueden leer y al menos uno tiene un match garantizado. Verificar exit code
-`0`.
+**VC-8.1:** `gcsgrep timeout gs://<bucket>/logs/`: exit code `0`.
 
 #### FR-8.2 — Exit 1
 
@@ -270,8 +327,8 @@ pueden leer y al menos uno tiene un match garantizado. Verificar exit code
 - **Cuando** el proceso termina,
 - **Entonces** el exit code es `1`.
 
-**VC-8.2:** Corrida contra un prefijo de prueba donde todos los objetos se
-pueden leer y ninguno contiene el patrón. Verificar exit code `1`.
+**VC-8.2:** `gcsgrep patron_inexistente_xyz gs://<bucket>/logs/`: `stdout`
+vacío y exit code `1`.
 
 #### FR-8.3 — Exit 2
 
@@ -280,9 +337,9 @@ pueden leer y ninguno contiene el patrón. Verificar exit code `1`.
 - **Entonces** el exit code es `2`, aunque haya habido matches en otros
   objetos.
 
-**VC-8.3:** Corrida contra un prefijo de prueba con un objeto sin permiso de
-lectura y matches garantizados en el resto de los objetos. Verificar exit
-code `2`.
+**VC-8.3:** Con las credenciales de `<sa-restringida>`,
+`gcsgrep timeout gs://<bucket>/acl/`: `stdout` contiene las 5 líneas de
+`acl/1.log` … `acl/5.log` y el exit code es `2`.
 
 ### FR-9 — Un objeto fallido no interrumpe la corrida
 *(deriva de FR-f)*
@@ -301,9 +358,9 @@ objeto; el objeto no aparece en `stdout`, y cuenta como error para FR-8.3.
 - **Entonces** emite por `stderr` el aviso con causa `permission denied` y
   continúa con el resto de los objetos.
 
-**VC-9.1:** Prefijo con 5 objetos legibles, cada uno con un match
-garantizado, y el objeto `acl/denied.log` sin permiso de lectura para las
-credenciales de la corrida. Verificar que `stdout` contiene los 5 matches,
+**VC-9.1:** Con las credenciales de `<sa-restringida>`, ejecutar
+`gcsgrep timeout gs://<bucket>/acl/`. Verificar que `stdout` es exactamente
+`acl/1.log:1:timeout` … `acl/5.log:1:timeout` (5 líneas),
 que `stderr` contiene la línea
 `gcsgrep: warning: acl/denied.log: permission denied` y que el exit code es
 `2`.
@@ -316,10 +373,9 @@ que `stderr` contiene la línea
 - **Entonces** emite por `stderr` el aviso con causa `corrupt gzip data` y
   continúa con el resto de los objetos.
 
-**VC-9.2:** Prefijo con `gz/ok.log` (un match garantizado) y `gz/bad.gz`
-(contenido de texto plano, sin formato gzip, con nombre `.gz`). Verificar
-que `stdout` contiene el match de `gz/ok.log`, que `stderr` contiene la
-línea `gcsgrep: warning: gz/bad.gz: corrupt gzip data` y que el exit code
+**VC-9.2:** Ejecutar `gcsgrep timeout gs://<bucket>/gzbad/`. Verificar que
+`stdout` es exactamente `gzbad/ok.log:1:timeout`, que `stderr` contiene la
+línea `gcsgrep: warning: gzbad/bad.gz: corrupt gzip data` y que el exit code
 es `2`.
 
 #### FR-9.3 — Objeto que dejó de existir
@@ -345,10 +401,9 @@ exit code es `2`.
   `read failed: <mensaje de error devuelto por GCS>` y continúa con el resto
   de los objetos.
 
-**VC-9.4:** Prefijo con `x/ok.log` (un match garantizado) y `x/csek.log`,
-subido cifrado con una clave provista por el cliente (CSEK), que GCS
-rechaza con HTTP 400 al leerlo sin la clave. Verificar que `stdout`
-contiene el match de `x/ok.log`, que `stderr` contiene una línea que
+**VC-9.4:** Ejecutar `gcsgrep timeout gs://<bucket>/x/` (`x/csek.log` está
+cifrado con CSEK y GCS rechaza leerlo sin la clave con HTTP 400). Verificar
+que `stdout` es exactamente `x/ok.log:1:timeout`, que `stderr` contiene una línea que
 empieza con `gcsgrep: warning: x/csek.log: read failed: ` y que el exit
 code es `2`.
 
@@ -371,8 +426,8 @@ redondeado hacia abajo.
 - **Entonces** se redibuja en el lugar el texto de progreso (precedido por
   `\r`, sin `\n`), y al terminar la corrida se emite un único `\n`.
 
-**VC-10.1:** Prefijo con 50 objetos, `stderr` conectado a un
-pseudo-terminal (pty). Verificar que `stderr` contiene exactamente 50
+**VC-10.1:** `gcsgrep timeout gs://<bucket>/prog/` (50 objetos), con
+`stderr` conectado a un pseudo-terminal (pty). Verificar que `stderr` contiene exactamente 50
 redibujos (`\r` seguido del texto de progreso), con porcentajes 2, 4, …,
 100 en orden creciente, y que termina en `\n`.
 
@@ -386,8 +441,8 @@ redibujos (`\r` seguido del texto de progreso), con porcentajes 2, 4, …,
   `\n`, sin `\r`. Si un mismo objeto hace superar más de un múltiplo, se
   emite una sola línea.
 
-**VC-10.2:** Mismo prefijo de 50 objetos que VC-10.1, con `stderr`
-redirigido a un archivo. Verificar que el archivo contiene exactamente 10
+**VC-10.2:** `gcsgrep timeout gs://<bucket>/prog/`, con `stderr` redirigido
+a un archivo. Verificar que el archivo contiene exactamente 10
 líneas de progreso (10%, 20%, …, 100%, en ese orden) y ningún byte `\r`.
 
 ### FR-11 — Objetos binarios se saltean
@@ -439,8 +494,8 @@ es `0`.
   tiempo, y el conjunto de líneas de `stdout` es el mismo que en modo
   secuencial (el orden sigue FR-19).
 
-**VC-13** (pasa solo si pasan VC-13.1 y VC-13.2), sobre un prefijo con 20
-objetos de texto, cada uno con 3 líneas que matchean:
+**VC-13** (pasa solo si pasan VC-13.1 y VC-13.2), con el patrón `match`
+sobre el prefijo `conc/` (20 objetos de 3 líneas que matchean):
 - **VC-13.1:** Con `--concurrency 4` y un cliente GCS que registra cuántos
   streams hay abiertos a la vez: el máximo registrado es exactamente `4`.
 - **VC-13.2:** El conjunto de líneas de `stdout` con `--concurrency 4` es
@@ -503,7 +558,7 @@ emite un único mensaje de error por `stderr` y el exit code es `2`.
 
 #### FR-16.1 — Ubicación sin esquema `gs://`
 
-- **Dado** una ubicación que no empieza con `gs://` (ej. `bucket/prefijo`),
+- **Dado** una ubicación que no empieza con `gs://` (como `bucket/prefijo`),
 - **Cuando** el usuario ejecuta `gcsgrep`,
 - **Entonces** la herramienta no hace ninguna llamada a GCS y emite
   `gcsgrep: error: invalid location "<ubicación>": must start with gs://`
@@ -536,8 +591,7 @@ exit code `2`, `stdout` vacío y una línea de `stderr` que empieza con
   `gcsgrep: error: permission denied listing gs://<bucket>/<prefijo>` y no
   reintenta el listado.
 
-**VC-25.3:** Con credenciales de una service account sin el permiso
-`storage.objects.list` sobre el bucket de prueba, ejecutar
+**VC-25.3:** Con las credenciales de `<sa-sin-rol>`, ejecutar
 `gcsgrep timeout gs://<bucket>/logs/`. Verificar exit code `2`, `stdout`
 vacío y la línea
 `gcsgrep: error: permission denied listing gs://<bucket>/logs/` en
@@ -574,18 +628,17 @@ en `stderr`.
 ### FR-18 — Prefijo sin `/` final
 *(deriva de FR-b)*
 
-- **Dado** una ubicación cuyo prefijo no termina en `/` (ej.
+- **Dado** una ubicación cuyo prefijo no termina en `/` (como
   `gs://bucket/logs`),
 - **Cuando** la herramienta lista los objetos,
 - **Entonces** incluye todos los objetos cuyo nombre empieza con ese prefijo,
   terminen o no en `/` después de él (`logs/a.log` y también
   `logs-old/b.log`).
 
-**VC-27:** Bucket de prueba con `logs/a.log`, `logs-old/b.log` y
-`other/c.log`, los tres con la línea `timeout` como línea 1. Ejecutar
-`gcsgrep timeout gs://<bucket>/logs`. Verificar que `stdout` contiene
-exactamente las líneas `logs/a.log:1:timeout` y `logs-old/b.log:1:timeout`,
-y ninguna de `other/c.log`.
+**VC-27:** Ejecutar `gcsgrep timeout gs://<bucket>/pfx/logs` (sin `/`
+final). Verificar que `stdout` es exactamente `pfx/logs-old/b.log:1:timeout`
+y `pfx/logs/a.log:1:timeout`, en ese orden, sin ninguna línea de
+`pfx/other/c.log`, y que el exit code es `0`.
 
 ### FR-19 — Orden de la salida
 *(deriva del requerimiento de concurrencia del base context y de la decisión
@@ -680,11 +733,15 @@ falla o mal uso.
 
 **Excepciones:** ninguna.
 
-**VC-15:** Ejecutar la suite de pruebas funcionales completa usando
-credenciales con el rol IAM `Storage Object Viewer` (sin permisos de
-escritura) y verificar que todo el comportamiento funciona igual que con
-credenciales de lectura/escritura — si `gcsgrep` necesitara algún permiso de
-escritura, fallaría con estas credenciales.
+**VC-15** (pasa solo si pasan VC-15.1 y VC-15.2):
+- **VC-15.1:** Ejecutar los comandos de VC-1.1, VC-8.2 y VC-11 con las
+  credenciales de `<sa-viewer>` (solo lectura) y con las ADC del usuario.
+  Verificar que, para cada comando, `stdout` es byte a byte idéntico y el
+  exit code es el mismo con ambas credenciales.
+- **VC-15.2:** Búsqueda estática en el código de `gcsgrep/`, excluyendo los
+  archivos `_test.go`: la interfaz `gcsclient.Client` declara solo `List` y
+  `Open`, y hay cero apariciones de `NewWriter`, `Delete`, `Update`, `Copier`,
+  `Compose` y `ACL(`.
 
 ### BR-2 — No amplifica el acceso del usuario
 *(deriva de BR-b)*
@@ -698,10 +755,12 @@ escalamiento de acceso.
 
 **Excepciones:** ninguna.
 
-**VC-16:** Con credenciales que tienen acceso a un subconjunto de objetos del
-prefijo (ACL a nivel de objeto), verificar que los objetos sin permiso
-quedan como objetos fallidos (FR-9.1) y en ningún momento su contenido
-aparece en la salida.
+**VC-16:** Con las credenciales de `<sa-restringida>` (que no pueden leer
+`acl/denied.log`), ejecutar `gcsgrep secreto gs://<bucket>/acl/`. Verificar
+que `stdout` queda vacío (la palabra `secreto` solo está en
+`acl/denied.log`), que `stderr` contiene
+`gcsgrep: warning: acl/denied.log: permission denied` y que el exit code es
+`2`.
 
 ### BR-3 — Guardrail de cantidad de objetos
 *(deriva de BR-c)*
@@ -718,8 +777,8 @@ bucket de millones de objetos, con el costo y tiempo que eso implica.
 **Excepciones:** `--max N`, con `N` entero positivo, reemplaza el límite;
 `--max 0` lo deshabilita.
 
-**VC-17** (pasa solo si pasan VC-17.1, VC-17.2 y VC-17.3), sobre un prefijo
-de prueba con 10 objetos:
+**VC-17** (pasa solo si pasan VC-17.1, VC-17.2 y VC-17.3), sobre el prefijo
+`max/` (10 objetos), con un cliente GCS que cuenta llamadas:
 - **VC-17.1:** Con `--max 5`: solo la llamada de listado y 0 llamadas de
   apertura de objeto, `stdout` vacío, la línea
   `gcsgrep: error: the prefix has 10 objects, which exceeds the limit of 5 (use --max to raise it, or --max 0 to disable it)`
@@ -784,62 +843,96 @@ y que el exit code es `2`.
 
 ## Requerimientos no funcionales
 
-> Umbrales propuestos en el refinamiento, pendientes de validar con
-> benchmark real antes de congelarlos definitivamente (ver
-> `gcsgrep-requirements.md`).
+Los umbrales están congelados. Todas las mediciones usan los datos de prueba
+de la sección [Datos de prueba](#datos-de-prueba), 3 corridas por medición y
+el valor mediano.
 
 ### NFR-1 — Rendimiento
 
-**Umbral:** sobre un bucket en la misma región que el cliente, con objetos
-de ~1 MiB promedio: throughput ≥ 15 objetos/seg con `--concurrency 8` en
-redes de baja latencia; **≥ 0.5 objetos/seg en modo secuencial (default),
-incluso en redes de latencia alta** (el modo secuencial queda acotado por
-RTT/ventana TCP de una sola conexión, no por el código — en redes de baja
-latencia se espera bastante más); latencia al primer resultado ≤ 2 segundos
-si el objeto con match está entre los primeros 50 listados, en redes de
-baja latencia. En entornos de latencia alta, `--concurrency` es la
-recomendación operativa, no el modo secuencial.
+**Umbral:** sobre el prefijo `perf/` (500 objetos de 1 MiB, bucket en
+`us-central1`):
+- Throughput en modo secuencial: **≥ 0,5 objetos/seg**.
+- Throughput con `--concurrency 8`: **≥ 3 veces** el throughput en modo
+  secuencial medido en la misma sesión y desde la misma red.
+- Latencia al primer resultado en modo secuencial, con el match en la línea 1
+  del primer objeto listado: **≤ 2 segundos** desde el arranque del proceso
+  hasta el primer byte de `stdout`.
 
-**VC-21** (pasa solo si pasan VC-21.1, VC-21.2 y VC-21.3), con un benchmark
-scripteado contra un bucket de prueba con ≥500 objetos de ~1 MiB:
-- **VC-21.1:** Modo secuencial: throughput ≥ 0.5 objetos/seg.
-- **VC-21.2:** Con `--concurrency 8`: throughput ≥ 15 objetos/seg.
-- **VC-21.3:** Con el objeto con match entre los primeros 50 listados:
-  tiempo hasta el primer resultado impreso ≤ 2 segundos.
+El umbral con concurrencia es relativo al secuencial porque el throughput
+absoluto depende del ancho de banda de la red hacia GCS, no del código (ver
+decisión de diseño 9).
 
-El umbral secuencial (≥ 0.5 objetos/seg) ya
-se validó una vez, contra un bucket real desde un entorno de latencia alta
-(0.59 objetos/seg observado) — ver `gcsgrep-cobertura-vc.md`. El umbral con
-concurrencia queda pendiente de la Iteración 3.
+**VC-21** (pasa solo si pasan VC-21.1, VC-21.2 y VC-21.3). Throughput = 500 /
+tiempo total, con el tiempo total medido con `/usr/bin/time` (tiempo real):
+- **VC-21.1:** `gcsgrep needle gs://<bucket>/perf/`: throughput ≥ 0,5
+  objetos/seg (tiempo total ≤ 1000 segundos).
+- **VC-21.2:** `gcsgrep --concurrency 8 needle gs://<bucket>/perf/`:
+  throughput ≥ 3 × el throughput de VC-21.1 medido en la misma sesión.
+- **VC-21.3:** `gcsgrep needle gs://<bucket>/perf/`, con un script que
+  registra el instante de arranque del proceso y el instante en que lee el
+  primer byte de su `stdout`: diferencia ≤ 2 segundos.
 
 ### NFR-2 — Memoria con objetos grandes
 
-**Umbral:** el uso de memoria adicional por objeto en proceso es constante
-respecto de su tamaño total (lectura por streaming en chunks de 64 KiB, buffer
-de línea acotado a 1 MiB por defecto — ver FR-15 para el comportamiento
-cuando una línea individual supera ese buffer). Memoria adicional estimada
-≤ 5 MiB por objeto en procesamiento simultáneo.
+**Umbral:** el pico de memoria residente (RSS) al procesar un objeto de 500
+MiB supera al de procesar un objeto de 5 MiB con el mismo contenido
+repetido en **≤ 5 MiB**. La memoria por objeto no depende de su tamaño:
+lectura por streaming en chunks de 64 KiB y buffer de línea de 1 MiB (FR-15).
 
-**VC-22:** Medir el RSS del proceso mientras procesa un objeto de ~5 MB y,
-por separado, uno de ~5 GB (mismo contenido repetido). Verificar que la
-diferencia de memoria pico entre ambas corridas es marginal (no proporcional
-al tamaño del objeto) — ej. diferencia ≤ 20 MiB.
+**VC-22:** Ejecutar
+`gcsgrep --max-object-size 0 --max-total-size 0 needle gs://<bucket>/mem/small.log`
+y
+`gcsgrep --max-object-size 0 --max-total-size 0 needle gs://<bucket>/mem/large.log`,
+cada una bajo `/usr/bin/time` (campo de RSS máximo: `-l` en macOS, `-v` en
+Linux). Verificar que ambas terminan con exit code `1` y que
+RSS máximo de `large.log` − RSS máximo de `small.log` ≤ 5 MiB
+(5.242.880 bytes).
 
 ### NFR-3 — Comportamiento ante fallos de red
 
-**Umbral:** un error transitorio (timeout, conexión reseteada, 5xx) se
-reintenta hasta 3 intentos en total, con backoff exponencial (500ms, 1s, 2s
-± 20% de jitter). Tras 3 fallos, el objeto queda como objeto fallido. Errores
-permanentes (403, 404) no se reintentan.
+**Umbral:**
+- Un error transitorio (timeout, conexión reseteada, HTTP 5xx) al **listar**
+  la ubicación o al **abrir** un objeto se reintenta hasta **3 intentos en
+  total**. Espera antes del 2º intento: 500 ms ± 20% (400–600 ms); antes del
+  3º: 1 s ± 20% (800–1200 ms).
+- Un error permanente (HTTP 4xx) no se reintenta (FR-9, FR-16).
+- Si se agotan los 3 intentos al abrir un objeto, el objeto queda como objeto
+  fallido: aviso
+  `gcsgrep: warning: <objeto>: network error after 3 attempts: <detalle>`, la
+  corrida continúa y termina con exit code `2`.
+- Si se agotan los 3 intentos al listar, no se abre ningún objeto: mensaje de
+  error
+  `gcsgrep: error: could not list gs://<bucket>/<prefijo> after 3 attempts: <detalle>`
+  y exit code `2`.
+- Un error **a mitad de la lectura** de un objeto ya abierto no se
+  reintenta: el objeto queda como objeto fallido, con el aviso
+  `gcsgrep: warning: <objeto>: read interrupted: <detalle>`; las líneas del
+  objeto ya impresas se mantienen y no se vuelven a imprimir; exit code `2`.
 
-**VC-23** (pasa solo si pasan VC-23.1, VC-23.2 y VC-23.3), con un proxy/mock
-de la API de GCS:
-- **VC-23.1:** 2 fallos transitorios seguidos de éxito → el objeto se procesa
-  correctamente (recuperado, sin quedar como objeto fallido).
-- **VC-23.2:** 3 fallos transitorios consecutivos → el objeto queda como
-  objeto fallido (FR-9) tras exactamente 3 intentos.
-- **VC-23.3:** un 403 → el objeto queda como objeto fallido inmediatamente, sin
-  reintentos (1 solo intento).
+**VC-23** (pasa solo si pasan VC-23.1 a VC-23.5), con un cliente GCS
+simulado que inyecta errores y registra el instante de cada intento. En
+VC-23.1 a VC-23.4 el prefijo simulado `r/` contiene solo `r/a.log` =
+`timeout\n`; en VC-23.5 contiene solo `r/mid.log`:
+- **VC-23.1:** Abrir `r/a.log` falla 2 veces con HTTP 503 y la 3ª tiene
+  éxito: `stdout` es exactamente `r/a.log:1:timeout`, `stderr` no tiene
+  avisos, exit code `0`, 3 intentos de apertura, espera entre el 1º y el 2º
+  de 400–600 ms y entre el 2º y el 3º de 800–1200 ms.
+- **VC-23.2:** Abrir `r/a.log` falla 3 veces con HTTP 503: exactamente 3
+  intentos, `stderr` contiene una línea que empieza con
+  `gcsgrep: warning: r/a.log: network error after 3 attempts: `, exit code
+  `2`.
+- **VC-23.3:** Abrir `r/a.log` falla con HTTP 403: exactamente 1 intento,
+  `stderr` contiene `gcsgrep: warning: r/a.log: permission denied`, exit
+  code `2`.
+- **VC-23.4:** Listar `r/` falla 3 veces con HTTP 503: exactamente 3 intentos
+  de listado, 0 aperturas, `stderr` contiene una línea que empieza con
+  `gcsgrep: error: could not list gs://<bucket>/r/ after 3 attempts: `, exit
+  code `2`.
+- **VC-23.5:** `r/mid.log` = `timeout uno\nINFO\ntimeout tres\n`, y su stream
+  se corta con "connection reset" después de entregar la línea 2: `stdout`
+  es exactamente `r/mid.log:1:timeout uno` (una sola vez), `stderr` contiene
+  una línea que empieza con `gcsgrep: warning: r/mid.log: read interrupted: `,
+  hubo exactamente 1 apertura y el exit code es `2`.
 
 ## Cobertura de VCs
 
@@ -883,20 +976,21 @@ de la API de GCS:
 | FR-20 | VC-29 | feliz | Comparación byte a byte de dos corridas |
 | FR-21.1 | VC-30.1 | borde (objeto de 0 bytes) | Test de integración |
 | FR-21.2 | VC-30.2 | borde (última línea sin `\n`) | Test de integración |
-| BR-1 | VC-15 | invariante | Test de integración con credenciales de solo lectura |
-| BR-2 | VC-16 | invariante | Test de integración con ACL restringida |
+| BR-1 | VC-15.1 | invariante | Corridas con credenciales de solo lectura vs. ADC del usuario |
+| BR-1 | VC-15.2 | invariante | Búsqueda estática en el código |
+| BR-2 | VC-16 | invariante | Corrida real con `<sa-restringida>` |
 | BR-3 | VC-17.1 | borde (límite de cantidad) | Test de integración, conteo de llamadas |
 | BR-3 | VC-17.2, VC-17.3 | feliz (límite levantado / deshabilitado) | Test de integración, conteo de llamadas |
 | BR-4 | VC-18 | borde (límite de tamaño) | Test de integración con .gz grande |
 | BR-5 | VC-19 | borde (límite acumulado) | Test de integración con guardrail acumulado bajo |
-| NFR-1 | VC-21.1, VC-21.2, VC-21.3 | medición | Benchmark de rendimiento |
-| NFR-2 | VC-22 | medición | Benchmark de memoria (RSS) |
-| NFR-3 | VC-23.1 | feliz (recuperación) | Test con proxy/mock de fallos de red |
-| NFR-3 | VC-23.2, VC-23.3 | falla | Test con proxy/mock de fallos de red |
+| NFR-1 | VC-21.1, VC-21.2, VC-21.3 | medición | `/usr/bin/time` + script de latencia sobre `perf/` |
+| NFR-2 | VC-22 | medición | `/usr/bin/time` (RSS máximo) sobre `mem/` |
+| NFR-3 | VC-23.1 | feliz (recuperación) | Test con cliente GCS simulado que inyecta errores |
+| NFR-3 | VC-23.2, VC-23.3, VC-23.4, VC-23.5 | falla | Test con cliente GCS simulado que inyecta errores |
 
-**21 FRs (37 FRs atómicos contando sub-ítems) + 5 BRs + 3 NFRs, 55 VCs
-atómicos, 0 requerimientos sin VC.** De los 55 VCs, 30 ejercitan un camino
-de falla o borde y 3 son invariantes — no es una tabla de puro camino feliz.
+**21 FRs (37 FRs atómicos contando sub-ítems) + 5 BRs + 3 NFRs, 58 VCs
+atómicos, 0 requerimientos sin VC.** De los 58 VCs, 32 ejercitan un camino
+de falla o borde y 4 son invariantes — no es una tabla de puro camino feliz.
 
 ## Trazabilidad al base context refinado
 
@@ -931,10 +1025,11 @@ BR-f y BR-g son nuevas en el refinamiento.
 ## Preguntas abiertas
 
 Ninguna. Las 10 preguntas abiertas del borrador original (commit `c84efbc`)
-están resueltas en `gcsgrep-design.md`, y las que surgieron durante la atomización (mutua exclusión de `-l`/`-c`,
-tope de concurrencia, riesgo de falso negativo en líneas largas) quedaron
-resueltas en la revisión conversacional de este documento — no queda ningún
-"a definir" pendiente.
+y las que surgieron en el refinamiento (reintentos, tamaño máximo de línea,
+progreso) están resueltas en `gcsgrep-design.md`; las que surgieron durante
+la atomización (mutua exclusión de `-l`/`-c`, tope de concurrencia, riesgo de
+falso negativo en líneas largas, casos de falla de la ubicación) quedaron
+resueltas en este documento. Los umbrales de los NFRs están congelados.
 
 ## Qué sigue
 
