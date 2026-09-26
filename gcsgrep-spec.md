@@ -763,12 +763,11 @@ llamadas a GCS.
 - **Entonces** emite
   `gcsgrep: error: invalid value "<valor>" for <flag>: must be an integer`.
 
-**VC-31.3:** Ejecutar
-`gcsgrep --max-object-size 1MiB timeout gs://<bucket>/logs/` con un cliente
-GCS que cuenta llamadas. Verificar exit code `2`, `stdout` vacío, `stderr`
-exactamente igual a
-`gcsgrep: error: invalid value "1MiB" for --max-object-size: must be an integer`
-y cero llamadas a GCS.
+**VC-31.3:** Ejecutar `gcsgrep --max diez timeout gs://<bucket>/logs/` con
+un cliente GCS que cuenta llamadas. Verificar exit code `2`, `stdout` vacío,
+`stderr` exactamente igual a
+`gcsgrep: error: invalid value "diez" for --max: must be an integer` y cero
+llamadas a GCS.
 
 #### FR-22.4 — Valor negativo en un flag de límite
 
