@@ -84,7 +84,7 @@ Cada término se usa siempre con este significado, en este documento, en
 | **Aviso** | Mensaje por `stderr` con prefijo `gcsgrep: warning:` sobre una situación de la que la corrida se recupera y continúa. | warning (en prosa), advertencia |
 | **Mensaje de error** | Mensaje por `stderr` con prefijo `gcsgrep: error:` que acompaña el fin de la corrida por un error. | — |
 | **Error** | Toda situación que obliga a terminar con exit code 2: objeto fallido, objeto cortado, escaneo incompleto, guardrail de cantidad alcanzado, error de uso, o fallo de acceso a la ubicación. | falla (como sinónimo) |
-| **Error de uso** | Invocación inválida: flags incompatibles, argumentos faltantes, valores fuera de rango, ubicación sin `gs://`. | — |
+| **Error de uso** | Invocación inválida: flags incompatibles, argumentos faltantes, valores fuera de rango, patrón que no es una regex RE2 válida, ubicación sin `gs://`. | — |
 | **Progreso** | Indicador por `stderr` de objetos procesados sobre el total listado. | — |
 | **Credenciales ADC** | Credenciales de Application Default Credentials de quien invoca. | — |
 

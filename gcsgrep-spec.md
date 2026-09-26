@@ -34,10 +34,11 @@ configuradas.
 ## Alcance
 
 **Incluido (v1, todas las iteraciones):**
-- Búsqueda literal y regex básica (estilo RE2, sin backtracking) sobre
+- Búsqueda por patrón con sintaxis RE2 completa (sin backtracking) sobre
   objetos de texto bajo un bucket o prefijo de GCS.
 - Autenticación vía Application Default Credentials (ADC) únicamente.
-- Flags `-i`, `-n` (por defecto), `-l`, `-c`.
+- Flags `-i`, `-n` (aceptado sin efecto: el número de línea siempre está en
+  la salida), `-l`, `-c`.
 - Salida `objeto:línea:texto`, con color condicional a TTY.
 - Exit codes estilo `grep` (0/1/2).
 - Lectura por streaming, solo lectura, sin amplificación de acceso.
@@ -75,24 +76,63 @@ configuradas.
 
 ## Requerimientos funcionales
 
-### FR-1 — Búsqueda básica sobre un prefijo
+### FR-1 — Búsqueda sobre un prefijo
 *(deriva de FR-a del borrador)*
 
-- **Dado** un bucket y prefijo `gs://bucket/prefijo` accesibles con las
-  credenciales ADC del usuario, y un patrón literal o regex básica,
-- **Cuando** el usuario ejecuta `gcsgrep PATRÓN gs://bucket/prefijo`,
-- **Entonces** la herramienta lee cada objeto de texto bajo ese prefijo por
-  streaming (sin materializar el objeto completo en disco) y busca el patrón
-  línea por línea.
+FR-1 se cumple solo si se cumplen FR-1.1, FR-1.2, FR-1.3 y FR-1.4.
 
-**VC-1** (pasa solo si pasan VC-1.1 y VC-1.2):
-- **VC-1.1:** Contra un bucket de prueba con objetos de texto conocidos
-  (algunos con match, otros sin match), ejecutar la búsqueda y verificar que
-  se reportan exactamente los objetos y líneas esperados.
-- **VC-1.2:** Búsqueda estática en el código de `gcsgrep/`, excluyendo los
-  archivos `_test.go`: cero apariciones de `os.Create`, `os.CreateTemp`,
-  `os.WriteFile` y `os.OpenFile`, es decir, ningún camino de código puede
-  escribir el contenido de un objeto a disco.
+#### FR-1.1 — Resultados de la búsqueda
+
+- **Dado** un prefijo `gs://bucket/prefijo`, legible con las credenciales ADC
+  del usuario, que contiene objetos de texto con y sin matches del patrón,
+- **Cuando** el usuario ejecuta `gcsgrep PATRÓN gs://bucket/prefijo`,
+- **Entonces** `stdout` contiene exactamente una línea con el formato de
+  FR-3.1 por cada match de cada objeto de texto bajo el prefijo, y ninguna
+  otra línea; el exit code sigue FR-8.
+
+**VC-1.1:** Prefijo `logs/` con `logs/a.log` (contenido
+`INFO start\nERROR timeout\n`) y `logs/b.log` (contenido `INFO ok\n`). Ejecutar
+`gcsgrep timeout gs://<bucket>/logs/` con `stdout` redirigido a un archivo.
+Verificar que el archivo contiene exactamente la línea
+`logs/a.log:2:ERROR timeout` y que el exit code es `0`.
+
+#### FR-1.2 — Sin escritura a disco
+
+- **Dado** cualquier corrida,
+- **Cuando** la herramienta lee el contenido de un objeto,
+- **Entonces** lo lee por streaming y nunca escribe el contenido del objeto
+  (ni completo ni en partes) a un archivo en disco.
+
+**VC-1.2:** Búsqueda estática en el código de `gcsgrep/`, excluyendo los
+archivos `_test.go`: cero apariciones de `os.Create`, `os.CreateTemp`,
+`os.WriteFile` y `os.OpenFile`, es decir, ningún camino de código puede
+escribir el contenido de un objeto a disco.
+
+#### FR-1.3 — El patrón es una regex RE2
+
+- **Dado** un patrón que contiene metacaracteres de RE2,
+- **Cuando** la herramienta evalúa cada línea,
+- **Entonces** interpreta el patrón con la sintaxis RE2 completa; un
+  metacarácter precedido por `\` se busca de forma literal.
+
+**VC-1.3:** Objeto `v/a.log` con las líneas `version 1.2` (línea 1) y
+`version 1x2` (línea 2). Ejecutar `gcsgrep 'version 1\.[0-9]' gs://<bucket>/v/`.
+Verificar que `stdout` contiene exactamente la línea `v/a.log:1:version 1.2`
+y que el exit code es `0`.
+
+#### FR-1.4 — Patrón inválido
+
+- **Dado** un patrón que no es una regex RE2 válida,
+- **Cuando** el usuario ejecuta `gcsgrep`,
+- **Entonces** la herramienta no hace ninguna llamada a GCS, emite por
+  `stderr` el mensaje de error
+  `gcsgrep: error: invalid pattern "<patrón>": <detalle>` y termina con exit
+  code `2` (error de uso).
+
+**VC-1.4:** Ejecutar `gcsgrep '(' gs://<bucket>/logs/` con un cliente GCS
+que cuenta llamadas. Verificar exit code `2`, `stdout` vacío, una línea de
+`stderr` que empieza con `gcsgrep: error: invalid pattern "("` y cero
+llamadas de listado o apertura.
 
 ### FR-2 — Búsqueda sobre bucket completo
 *(deriva de FR-b)*
@@ -203,7 +243,9 @@ FR-8 se cumple solo si se cumplen FR-8.1, FR-8.2 y FR-8.3.
 
 Cuenta como **error** a efectos de FR-8: un objeto fallido (FR-9), el
 guardrail de cantidad alcanzado (BR-3), un objeto cortado (BR-4), un escaneo
-incompleto (BR-5) y un error de uso (FR-7, FR-14).
+incompleto (BR-5), un error de uso (FR-1.4, FR-7, FR-14, FR-16.1), la falta
+de credenciales ADC (FR-16.2), el listado denegado (FR-16.3) y un bucket
+inexistente (FR-16.4). Una ubicación sin objetos **no** es un error (FR-17).
 
 #### FR-8.1 — Exit 0
 
@@ -413,6 +455,178 @@ partido o de forma inconsistente), que el resto de las líneas normales del
 mismo objeto se procesan con normalidad, y que aparece exactamente un warning
 por `stderr` para ese objeto — no uno por cada línea larga si hay varias.
 
+### FR-16 — La ubicación no se puede usar
+*(deriva de FR-b y de las decisiones de diseño 2 y 3)*
+
+FR-16 se cumple solo si se cumplen FR-16.1, FR-16.2, FR-16.3 y FR-16.4. En
+todos los casos la corrida no abre ningún objeto, `stdout` queda vacío, se
+emite un único mensaje de error por `stderr` y el exit code es `2`.
+
+#### FR-16.1 — Ubicación sin esquema `gs://`
+
+- **Dado** una ubicación que no empieza con `gs://` (ej. `bucket/prefijo`),
+- **Cuando** el usuario ejecuta `gcsgrep`,
+- **Entonces** la herramienta no hace ninguna llamada a GCS y emite
+  `gcsgrep: error: invalid location "<ubicación>": must start with gs://`
+  (error de uso).
+
+**VC-25.1:** Ejecutar `gcsgrep timeout mybucket/logs/` con un cliente GCS
+que cuenta llamadas. Verificar exit code `2`, `stdout` vacío, la línea
+`gcsgrep: error: invalid location "mybucket/logs/": must start with gs://`
+en `stderr` y cero llamadas a GCS.
+
+#### FR-16.2 — Sin credenciales ADC
+
+- **Dado** un entorno donde no se pueden resolver credenciales ADC,
+- **Cuando** el usuario ejecuta `gcsgrep` con una ubicación válida,
+- **Entonces** la herramienta emite
+  `gcsgrep: error: no Application Default Credentials found: <detalle>`.
+
+**VC-25.2:** En una máquina fuera de GCP (sin servidor de metadata), con la
+variable `GOOGLE_APPLICATION_CREDENTIALS` sin definir y `HOME` apuntando a un
+directorio vacío, ejecutar `gcsgrep timeout gs://<bucket>/logs/`. Verificar
+exit code `2`, `stdout` vacío y una línea de `stderr` que empieza con
+`gcsgrep: error: no Application Default Credentials found`.
+
+#### FR-16.3 — Listado denegado
+
+- **Dado** credenciales sin permiso para listar objetos del bucket (el
+  listado responde HTTP 403),
+- **Cuando** la herramienta lista la ubicación,
+- **Entonces** emite
+  `gcsgrep: error: permission denied listing gs://<bucket>/<prefijo>` y no
+  reintenta el listado.
+
+**VC-25.3:** Con credenciales de una service account sin el permiso
+`storage.objects.list` sobre el bucket de prueba, ejecutar
+`gcsgrep timeout gs://<bucket>/logs/`. Verificar exit code `2`, `stdout`
+vacío y la línea
+`gcsgrep: error: permission denied listing gs://<bucket>/logs/` en
+`stderr`.
+
+#### FR-16.4 — Bucket inexistente
+
+- **Dado** una ubicación cuyo bucket no existe (el listado responde HTTP
+  404),
+- **Cuando** la herramienta lista la ubicación,
+- **Entonces** emite `gcsgrep: error: bucket <bucket> does not exist` y no
+  reintenta el listado.
+
+**VC-25.4:** Ejecutar `gcsgrep timeout gs://gcsgrep-bucket-inexistente-xyz/`.
+Verificar exit code `2`, `stdout` vacío y la línea
+`gcsgrep: error: bucket gcsgrep-bucket-inexistente-xyz does not exist` en
+`stderr`.
+
+### FR-17 — Ubicación sin objetos
+*(deriva de la decisión de diseño 8)*
+
+- **Dado** una ubicación válida y legible bajo la cual el listado no
+  devuelve ningún objeto,
+- **Cuando** la herramienta termina de listar,
+- **Entonces** `stdout` queda vacío, emite por `stderr` el aviso
+  `gcsgrep: warning: no objects under gs://<bucket>/<prefijo>` y el exit
+  code es `1` (no es un error).
+
+**VC-26:** Ejecutar `gcsgrep timeout gs://<bucket>/prefijo-sin-objetos/`
+contra el bucket de prueba. Verificar exit code `1`, `stdout` vacío y la
+línea `gcsgrep: warning: no objects under gs://<bucket>/prefijo-sin-objetos/`
+en `stderr`.
+
+### FR-18 — Prefijo sin `/` final
+*(deriva de FR-b)*
+
+- **Dado** una ubicación cuyo prefijo no termina en `/` (ej.
+  `gs://bucket/logs`),
+- **Cuando** la herramienta lista los objetos,
+- **Entonces** incluye todos los objetos cuyo nombre empieza con ese prefijo,
+  terminen o no en `/` después de él (`logs/a.log` y también
+  `logs-old/b.log`).
+
+**VC-27:** Bucket de prueba con `logs/a.log`, `logs-old/b.log` y
+`other/c.log`, los tres con la línea `timeout` como línea 1. Ejecutar
+`gcsgrep timeout gs://<bucket>/logs`. Verificar que `stdout` contiene
+exactamente las líneas `logs/a.log:1:timeout` y `logs-old/b.log:1:timeout`,
+y ninguna de `other/c.log`.
+
+### FR-19 — Orden de la salida
+*(deriva del requerimiento de concurrencia del base context y de la decisión
+de diseño 9)*
+
+FR-19 se cumple solo si se cumplen FR-19.1 y FR-19.2.
+
+#### FR-19.1 — Modo secuencial
+
+- **Dado** una corrida en modo secuencial (sin `--concurrency`, o con
+  `--concurrency 1`),
+- **Cuando** la herramienta imprime resultados,
+- **Entonces** los objetos aparecen en el orden del listado de GCS (orden
+  lexicográfico por bytes del nombre de objeto) y, dentro de cada objeto, las
+  líneas aparecen en orden ascendente de número de línea.
+
+**VC-28.1:** Prefijo `ord/` con `ord/b.log`, `ord/a.log` y `ord/c.log`
+(subidos en ese orden), cada uno con las líneas `match 1` y `match 2`.
+Ejecutar `gcsgrep match gs://<bucket>/ord/`. Verificar que `stdout` es
+exactamente, en este orden: `ord/a.log:1:match 1`, `ord/a.log:2:match 2`,
+`ord/b.log:1:match 1`, `ord/b.log:2:match 2`, `ord/c.log:1:match 1`,
+`ord/c.log:2:match 2`.
+
+#### FR-19.2 — Modo concurrente
+
+- **Dado** una corrida con `--concurrency N`, con `N ≥ 2`,
+- **Cuando** la herramienta imprime resultados,
+- **Entonces** las líneas de un mismo objeto aparecen juntas (sin líneas de
+  otro objeto intercaladas) y en orden ascendente de número de línea; el
+  orden entre objetos no está garantizado.
+
+**VC-28.2:** Prefijo `conc/` con 20 objetos, cada uno con 3 líneas que
+matchean el patrón. Ejecutar 5 veces con `--concurrency 8`. Verificar que en
+cada una de las 5 corridas las 3 líneas de cada objeto aparecen consecutivas
+y en orden 1, 2, 3, y que el conjunto de las 60 líneas es idéntico al de la
+corrida en modo secuencial.
+
+### FR-20 — `-n` explícito
+*(deriva de FR-d)*
+
+- **Dado** el flag `-n`,
+- **Cuando** el usuario ejecuta `gcsgrep -n PATRÓN UBICACIÓN`,
+- **Entonces** `stdout`, `stderr` y el exit code son idénticos a los de la
+  misma invocación sin `-n` (el número de línea ya está siempre en el formato
+  de FR-3.1).
+
+**VC-29:** Sobre el prefijo de VC-1.1, ejecutar
+`gcsgrep timeout gs://<bucket>/logs/` y
+`gcsgrep -n timeout gs://<bucket>/logs/`. Verificar
+que ambas corridas producen `stdout` byte a byte idéntico y el mismo exit
+code (`0`).
+
+### FR-21 — Bordes del contenido de un objeto
+*(deriva de FR-a y de la definición de "línea" del glosario)*
+
+FR-21 se cumple solo si se cumplen FR-21.1 y FR-21.2.
+
+#### FR-21.1 — Objeto de 0 bytes
+
+- **Dado** un objeto de texto de 0 bytes,
+- **Cuando** la herramienta lo procesa,
+- **Entonces** lo trata como un objeto sin líneas: no produce matches, no
+  emite ningún aviso y no cuenta como objeto salteado ni como objeto fallido.
+
+**VC-30.1:** Prefijo `e/` con `e/empty.log` (0 bytes) y `e/a.log` (única
+línea `timeout`). Ejecutar `gcsgrep timeout gs://<bucket>/e/`. Verificar que
+`stdout` es exactamente `e/a.log:1:timeout`, que `stderr` no contiene
+`e/empty.log` y que el exit code es `0`.
+
+#### FR-21.2 — Última línea sin `\n`
+
+- **Dado** un objeto cuyo último byte no es `\n`,
+- **Cuando** la herramienta llega al final del objeto,
+- **Entonces** trata los bytes después del último `\n` como una línea más: se
+  evalúa contra el patrón y, si matchea, se reporta con su número de línea.
+
+**VC-30.2:** Objeto `n/last.log` con contenido `uno\ndos timeout` (sin `\n`
+final). Ejecutar `gcsgrep timeout gs://<bucket>/n/`. Verificar que `stdout`
+es exactamente `n/last.log:2:dos timeout` y que el exit code es `0`.
+
 ## Reglas de negocio
 
 ### BR-1 — Solo lectura
@@ -585,8 +799,10 @@ de la API de GCS:
 
 | Requisito | VC | Camino | Verificado por |
 |---|---|---|---|
-| FR-1 | VC-1.1 | feliz | Test de integración contra bucket de prueba |
-| FR-1 | VC-1.2 | invariante (sin escritura a disco) | Búsqueda estática en el código |
+| FR-1.1 | VC-1.1 | feliz | Test de integración contra bucket de prueba |
+| FR-1.2 | VC-1.2 | invariante (sin escritura a disco) | Búsqueda estática en el código |
+| FR-1.3 | VC-1.3 | feliz (sintaxis RE2) | Test de integración |
+| FR-1.4 | VC-1.4 | falla (error de uso) | Test CLI con cliente que cuenta llamadas |
 | FR-2 | VC-2 | feliz | Test de integración |
 | FR-3.1 | VC-3.1 | feliz | Test de integración (`stdout` a archivo) |
 | FR-3.2 | VC-3.2 | borde (`stdout` en TTY) | Test de integración con pty |
@@ -609,6 +825,17 @@ de la API de GCS:
 | FR-13 | VC-13 | medición | Benchmark de concurrencia |
 | FR-14 | VC-14 | falla | Test unitario/CLI (validación de flags) |
 | FR-15 | VC-24 | borde (línea extrema) | Test de integración con línea que excede el buffer |
+| FR-16.1 | VC-25.1 | falla (error de uso) | Test CLI con cliente que cuenta llamadas |
+| FR-16.2 | VC-25.2 | falla (sin credenciales) | Corrida real con entorno sin ADC |
+| FR-16.3 | VC-25.3 | falla (listado denegado) | Corrida real con service account sin `storage.objects.list` |
+| FR-16.4 | VC-25.4 | falla (bucket inexistente) | Corrida real |
+| FR-17 | VC-26 | borde (ubicación vacía) | Corrida real |
+| FR-18 | VC-27 | borde (prefijo sin `/`) | Test de integración |
+| FR-19.1 | VC-28.1 | feliz (orden secuencial) | Test de integración |
+| FR-19.2 | VC-28.2 | borde (orden concurrente) | Test de integración, 5 corridas |
+| FR-20 | VC-29 | feliz | Comparación byte a byte de dos corridas |
+| FR-21.1 | VC-30.1 | borde (objeto de 0 bytes) | Test de integración |
+| FR-21.2 | VC-30.2 | borde (última línea sin `\n`) | Test de integración |
 | BR-1 | VC-15 | invariante | Test de integración con credenciales de solo lectura |
 | BR-2 | VC-16 | invariante | Test de integración con ACL restringida |
 | BR-3 | VC-17.1 | borde (límite de cantidad) | Test de integración, conteo de llamadas |
@@ -621,8 +848,8 @@ de la API de GCS:
 | NFR-3 | VC-23.1 | feliz (recuperación) | Test con proxy/mock de fallos de red |
 | NFR-3 | VC-23.2, VC-23.3 | falla | Test con proxy/mock de fallos de red |
 
-**15 FRs (23 FRs atómicos contando sub-ítems) + 6 BRs + 3 NFRs, 40 VCs
-atómicos, 0 requerimientos sin VC.** De los 40 VCs, 19 ejercitan un camino
+**21 FRs (37 FRs atómicos contando sub-ítems) + 6 BRs + 3 NFRs, 53 VCs
+atómicos, 0 requerimientos sin VC.** De los 53 VCs, 29 ejercitan un camino
 de falla o borde y 3 son invariantes — no es una tabla de puro camino feliz.
 
 ## Trazabilidad al borrador original
@@ -639,6 +866,12 @@ de falla o borde y 3 son invariantes — no es una tabla de puro camino feliz.
 | FR-12 | BR-e (promovido a FR, sin BR equivalente) |
 | FR-13, FR-14, BR-6 | Decisión de concurrencia (sin equivalente en el borrador) |
 | FR-15 | NFR-b (memoria) — promovido a FR, corrige riesgo de falso negativo detectado en revisión |
+| FR-16 | FR-b + decisiones de diseño 2 (autenticación) y 3 (ubicación) |
+| FR-17 | Decisión de diseño 8 (ubicación sin objetos) |
+| FR-18 | FR-b (prefijo sin `/` final) |
+| FR-19 | Requerimiento de concurrencia (orden de salida) + decisión de diseño 9 |
+| FR-20 | FR-d (`-n`) |
+| FR-21 | FR-a + definición de "línea" del glosario |
 | BR-1 | BR-a |
 | BR-2 | BR-b |
 | BR-3 | BR-c |
