@@ -30,7 +30,7 @@ func Parse(argv []string) (Args, error) {
 	ignoreCase := fs.Bool("i", false, "case-insensitive search")
 	// -n is accepted as a silent no-op: the default output format already
 	// always includes the line number (decision recorded in
-	// gcsgrep-requirements.md, "Decisiones tomadas" #4).
+	// gcsgrep-design.md, "Decisiones de diseño" #4).
 	fs.Bool("n", true, "show line numbers (always on)")
 	maxObjects := fs.Int("max", scanner.DefaultMaxObjects, "cap on the number of objects to scan under the prefix (0 disables the guardrail)")
 
@@ -59,7 +59,7 @@ func Parse(argv []string) (Args, error) {
 
 // parseLocation parses gs://bucket/prefix (FR-1, FR-2). Only the gs://
 // scheme is accepted — no bucket/prefix shorthand (decision #3 in
-// gcsgrep-requirements.md, to leave the door open for other providers
+// gcsgrep-design.md, to leave the door open for other providers
 // later without ambiguity). A path with no trailing slash is a name
 // prefix, not a "folder" — GCS has no real folders, and gcsclient.List
 // forwards it as-is to the Objects query.

@@ -11,7 +11,7 @@ type Matcher struct {
 
 // New compiles pattern as an RE2 regular expression (Go's regexp package is
 // RE2-based: no backtracking, matching the "literal + regex básica" decision
-// in gcsgrep-requirements.md). A plain literal string like "timeout" is a
+// in gcsgrep-design.md). A plain literal string like "timeout" is a
 // valid RE2 pattern that matches itself, so no separate literal mode is
 // needed. If ignoreCase is set, the match is case-insensitive (FR-4, `-i`).
 func New(pattern string, ignoreCase bool) (*Matcher, error) {

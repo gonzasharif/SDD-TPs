@@ -13,10 +13,12 @@ bajarlos primero a disco.
 
 | # | Archivo | Paso SDD |
 |---|---|---|
-| 1 | [`gcsgrep-requirements.md`](./gcsgrep-requirements.md) | Base context refinado (decisiones tomadas, arquitectura) |
-| 2 | [`gcsgrep-spec.md`](./gcsgrep-spec.md) | Spec: FRs/BRs/NFRs en Dado/Cuando/Entonces, un VC por cada uno |
-| 3 | [`gcsgrep-plan.md`](./gcsgrep-plan.md) | Plan de iteraciones (alcance diferido vive acá, no en la spec) |
-| 4 | [`gcsgrep-cobertura-vc.md`](./gcsgrep-cobertura-vc.md) | Evidencia de verificación, acumulada por iteración |
+| 0 | [`gcsgrep-borrador.md`](./gcsgrep-borrador.md) | Borrador original de la cátedra (punto de partida, sin modificar) |
+| 1 | [`gcsgrep-requirements.md`](./gcsgrep-requirements.md) | Base context refinado: requerimientos del dominio y glosario (lenguaje ubicuo) |
+| 2 | [`gcsgrep-design.md`](./gcsgrep-design.md) | Diseño: modelo de dominio, decisiones, arquitectura |
+| 3 | [`gcsgrep-spec.md`](./gcsgrep-spec.md) | Spec: FRs/BRs/NFRs en Dado/Cuando/Entonces, un VC por cada uno |
+| 4 | [`gcsgrep-plan.md`](./gcsgrep-plan.md) | Plan de iteraciones (alcance diferido vive acá, no en la spec) |
+| 5 | [`gcsgrep-cobertura-vc.md`](./gcsgrep-cobertura-vc.md) | Evidencia de verificación, acumulada por iteración |
 
 ### Correrlo
 

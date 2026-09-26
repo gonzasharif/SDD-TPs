@@ -1,8 +1,11 @@
 # gcsgrep — Spec
 
 > **Estado: revisada.** Sin preguntas abiertas (ver cierre del documento).
-> Deriva de [`gcsgrep-requirements.md`](./gcsgrep-requirements.md) (base
-> context refinado). Este documento es el contrato verificable: cada FR está
+> Deriva del base context refinado,
+> [`gcsgrep-requirements.md`](./gcsgrep-requirements.md) (qué y con qué
+> vocabulario), con las decisiones de
+> [`gcsgrep-design.md`](./gcsgrep-design.md) (cómo y por qué).
+> Este documento es el contrato verificable: cada FR está
 > en formato Dado/Cuando/Entonces, cada BR tiene fundamento, y cada FR y BR
 > tiene un VC (criterio de verificación) concreto. El alcance por iteración
 > (qué entra en la Iteración 1 vs. después) vive en `gcsgrep-plan.md`, no acá.
@@ -480,8 +483,8 @@ tabla de puro camino feliz.
 
 ## Preguntas abiertas
 
-Ninguna. Las 10 preguntas abiertas del borrador (`gcsgrep-requirements.md`)
-y las que surgieron durante la atomización (mutua exclusión de `-l`/`-c`,
+Ninguna. Las 10 preguntas abiertas del borrador original
+(`gcsgrep-borrador.md`) están resueltas en `gcsgrep-design.md`, y las que surgieron durante la atomización (mutua exclusión de `-l`/`-c`,
 tope de concurrencia, riesgo de falso negativo en líneas largas) quedaron
 resueltas en la revisión conversacional de este documento — no queda ningún
 "a definir" pendiente.

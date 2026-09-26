@@ -11,7 +11,7 @@
 La implementación está en el subdirectorio `gcsgrep/` de este repo, en Go
 (módulo `gcsgrep`). Estructura: `cmd/gcsgrep/main.go` es el entry point;
 `internal/{cli,scanner,reader,match,gcsclient,output}` son los módulos
-descritos en el "Esquema de arquitectura" de `gcsgrep-requirements.md`.
+descritos en la sección "Arquitectura" de `gcsgrep-design.md`.
 
 ```bash
 cd gcsgrep

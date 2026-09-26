@@ -36,7 +36,7 @@ type gcsClient struct {
 
 // New builds a Client authenticated via Application Default Credentials —
 // gcsgrep never accepts a service-account key file (decision recorded in
-// gcsgrep-requirements.md).
+// gcsgrep-design.md, decision #2).
 func New(ctx context.Context) (Client, error) {
 	sc, err := storage.NewClient(ctx)
 	if err != nil {

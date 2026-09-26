@@ -1,16 +1,20 @@
-# gcsgrep — requerimientos (refinado)
+# gcsgrep — requerimientos (base context refinado)
 
-> **Estado: refinado.** Este documento arrancó como un borrador deliberadamente
-> subespecificado (ver historial de git para la versión original). Las 10
-> preguntas abiertas que traía se resolvieron en sesión de refinamiento con el
-> agente; las decisiones y su fundamento están en la sección
-> [Decisiones tomadas](#decisiones-tomadas). Los valores numéricos concretos de
-> los NFRs y guardrails son una **propuesta inicial razonable**, no medida con
-> benchmarks reales todavía — están marcados como tal.
+> **Estado: refinado.** Este es el *base context* del proyecto: describe el
+> problema, para quién es y qué tiene que cumplir la herramienta, con el
+> vocabulario del dominio. No describe cómo se construye.
 >
-> Este sigue siendo el *base context*, no la spec formal. El paso siguiente es
-> convertir cada FR en Dado/Cuando/Entonces con su VC, y cada BR con su
-> fundamento formal — eso vive en un documento de spec aparte.
+> - Punto de partida: [`gcsgrep-borrador.md`](./gcsgrep-borrador.md), el
+>   borrador original de la cátedra, sin modificar.
+> - Cómo se construye y por qué (decisiones, modelo de dominio,
+>   arquitectura): [`gcsgrep-design.md`](./gcsgrep-design.md).
+> - Contrato verificable (FRs/BRs/NFRs con su VC):
+>   [`gcsgrep-spec.md`](./gcsgrep-spec.md).
+>
+> En todo el repo, **"borrador original"** es `gcsgrep-borrador.md` y
+> **"base context refinado"** es este documento. Las 10 preguntas abiertas del
+> borrador original están resueltas; cada decisión, con su fundamento, vive en
+> `gcsgrep-design.md`.
 
 ## La idea
 
@@ -47,7 +51,43 @@ gente que no conoce la línea de comandos.
 - **No reintenta indefinidamente ni escala privilegios.** Nunca hace más de lo
   que las credenciales de quien invoca ya permiten.
 
+## Glosario (lenguaje ubicuo)
+
+Cada término se usa siempre con este significado, en este documento, en
+`gcsgrep-design.md`, en `gcsgrep-spec.md` y en `gcsgrep-plan.md`. La columna
+"No usar" lista los sinónimos que se reemplazan por el término.
+
+| Término | Definición | No usar |
+|---|---|---|
+| **Ubicación** | Argumento `gs://bucket/prefijo` que indica dónde buscar. | ruta, path |
+| **Bucket** | Contenedor de objetos de GCS nombrado en la ubicación. | — |
+| **Prefijo** | Parte de la ubicación después del bucket. Filtra objetos por el comienzo de su nombre; en GCS no existen carpetas. | carpeta, directorio |
+| **Objeto** | Unidad de almacenamiento de GCS, identificada por su nombre dentro del bucket. | archivo |
+| **Nombre de objeto** | Nombre completo del objeto dentro del bucket, sin `gs://bucket/` (ej. `logs/a.log`). | ruta del objeto |
+| **Patrón** | Expresión que se busca en cada línea. | query, término |
+| **Línea** | Secuencia de bytes de un objeto terminada en `\n` o en el fin del objeto. | — |
+| **Match** | Línea de un objeto en la que el patrón aparece al menos una vez. | hit |
+| **Corrida** | Una invocación completa de `gcsgrep`, desde el parseo de argumentos hasta el exit code. | ejecución, búsqueda (como sustantivo) |
+| **Objeto binario** | Objeto cuyos primeros 8 KiB de contenido (descomprimido, si es un objeto comprimido) contienen un byte nulo (`0x00`). | — |
+| **Objeto de texto** | Objeto que no es binario. | — |
+| **Objeto comprimido** | Objeto cuyo nombre termina en `.gz`. | — |
+| **Objeto corrupto** | Objeto comprimido cuyo contenido gzip es inválido (cabecera o CRC). El término no aplica a objetos no comprimidos. | dañado |
+| **Objeto salteado** | Objeto que deliberadamente no se busca por una regla (hoy: objeto binario). **No** es un error. | ignorado, omitido |
+| **Línea salteada** | Línea que supera el tamaño máximo de línea y no se busca. **No** es un error. | línea truncada |
+| **Objeto fallido** | Objeto que no se pudo leer completo: sin permiso, no encontrado, objeto corrupto, o fallo de red tras agotar los reintentos. **Es** un error. | ilegible, no accesible, inaccesible |
+| **Objeto cortado** | Objeto cuya lectura se detuvo al alcanzar el guardrail de tamaño por objeto. **Es** un error. | — |
+| **Guardrail** | Límite de costo que impide o corta la lectura: cantidad de objetos, tamaño por objeto, tamaño acumulado de la corrida. | tope, límite (sueltos) |
+| **Escaneo incompleto** | Corrida que terminó sin leer todos los objetos listados porque se alcanzó el guardrail acumulado. **Es** un error. | — |
+| **Aviso** | Mensaje por `stderr` con prefijo `gcsgrep: warning:` sobre una situación de la que la corrida se recupera y continúa. | warning (en prosa), advertencia |
+| **Mensaje de error** | Mensaje por `stderr` con prefijo `gcsgrep: error:` que acompaña el fin de la corrida por un error. | — |
+| **Error** | Toda situación que obliga a terminar con exit code 2: objeto fallido, objeto cortado, escaneo incompleto, guardrail de cantidad alcanzado, error de uso, o fallo de acceso a la ubicación. | falla (como sinónimo) |
+| **Error de uso** | Invocación inválida: flags incompatibles, argumentos faltantes, valores fuera de rango, ubicación sin `gs://`. | — |
+| **Progreso** | Indicador por `stderr` de objetos procesados sobre el total listado. | — |
+| **Credenciales ADC** | Credenciales de Application Default Credentials de quien invoca. | — |
+
 ## Requerimientos funcionales (resueltos)
+
+Todos derivan del borrador original (FR-a a FR-g).
 
 - **FR-a** — El usuario pasa un patrón (literal o regex básica) y una ubicación
   `gs://bucket/prefijo`, y la herramienta busca el patrón línea por línea dentro
@@ -68,50 +108,52 @@ gente que no conoce la línea de comandos.
   excluyentes: pasarlas juntas es un error de uso (exit code 2).
 - **FR-e** — El exit code sigue la convención de `grep`: `0` si hubo al menos un
   match, `1` si no hubo ningún match y no hubo errores, `2` si hubo algún error
-  (objeto ilegible, guardrail de tamaño superado en algún objeto, o guardrail
-  acumulado alcanzado) — incluso si hubo matches en otros objetos. Esto es
-  deliberado: prioriza que un script detecte una corrida incompleta por sobre
-  reportar éxito parcial silencioso.
-- **FR-f** — Si un objeto individual no se puede leer (permisos, corrupto, o
-  falla de red persistente tras reintentos — ver NFR-c), se emite un warning
-  por `stderr` con el nombre del objeto y la razón, y la corrida continúa con
-  el resto de los objetos. No aborta la corrida completa.
+  (objeto fallido, objeto cortado o escaneo incompleto) — incluso si hubo
+  matches en otros objetos. Esto es deliberado: prioriza que un script detecte
+  una corrida incompleta por sobre reportar éxito parcial silencioso.
+- **FR-f** — Un objeto fallido (sin permiso, objeto corrupto, o falla de red
+  persistente tras reintentos — ver NFR-c) genera un aviso por `stderr` con el
+  nombre del objeto y la causa, y la corrida continúa con el resto de los
+  objetos. No aborta la corrida completa.
 - **FR-g** — Mientras hay objetos pendientes de procesar, la herramienta emite
-  indicadores de progreso por `stderr` (objetos procesados / total listado),
+  progreso por `stderr` (objetos procesados / total listado),
   independientemente de si corre en modo secuencial o concurrente.
 
 ## Reglas de negocio (decididas)
 
-- **BR-a** — La herramienta nunca escribe en GCS. Solo lectura, siempre. Sin
-  excepciones.
-- **BR-b** — La herramienta no amplía el acceso más allá de las credenciales de
-  quien la invoca (ADC). Si el usuario no puede leer un bucket u objeto,
-  `gcsgrep` tampoco — y lo reporta como objeto/bucket ilegible (FR-f), no como
-  crash.
-- **BR-c** — Guardrail de cantidad de objetos: antes de leer contenido,
-  `gcsgrep` lista y cuenta los objetos bajo el prefijo (operación de listado,
-  barata en costo de GCS). Si la cantidad supera **1000 objetos** (valor por
-  defecto propuesto, sin validar con benchmark), aborta antes de leer ningún
-  contenido, con un mensaje que indica cómo levantar el límite. Se levanta con
-  `--max N`, o `--max 0` para deshabilitarlo explícitamente.
-- **BR-d** — Detección de binarios: un objeto se trata como binario (y se
-  saltea, con aviso por `stderr`) si sus primeros 8 KiB contienen un byte nulo
-  (`0x00`) — heurística estándar equivalente a la que usa GNU grep.
-- **BR-e** — Los objetos `.gz` (detectados por extensión de nombre) se
+- **BR-a** — La herramienta nunca escribe en GCS.
+  Solo lectura, siempre. Sin excepciones.
+- **BR-b** — La herramienta no amplía el acceso más
+  allá de las credenciales ADC de quien la invoca. Si el usuario no puede leer
+  un bucket u objeto, `gcsgrep` tampoco — y lo reporta como error (objeto
+  fallido, o fallo de acceso a la ubicación), no como crash.
+- **BR-c** — Guardrail de cantidad de objetos: antes
+  de leer contenido, `gcsgrep` lista y cuenta los objetos bajo el prefijo
+  (operación de listado, barata en costo de GCS). Si la cantidad supera
+  **1000 objetos** (valor por defecto propuesto, sin validar con benchmark),
+  aborta antes de leer ningún contenido, con un mensaje de error que indica
+  cómo levantar el límite. Se levanta con `--max N`, o `--max 0` para
+  deshabilitarlo explícitamente.
+- **BR-d** — Detección de binarios: un objeto
+  binario se saltea, con aviso por `stderr` — heurística estándar equivalente
+  a la que usa GNU grep.
+- **BR-e** — Los objetos comprimidos se
   descomprimen al vuelo por streaming y se busca dentro del contenido
   descomprimido, tratado como texto (sujeto a la misma detección de binario de
   BR-d sobre el contenido ya descomprimido).
-- **BR-f** — Guardrail de tamaño descomprimido por objeto: si el contenido
-  descomprimido leído de un objeto supera **250 MiB** (valor por defecto
-  propuesto), se corta la lectura de ese objeto, se emite un warning por
-  `stderr` indicando que se alcanzó el límite, y se continúa con el resto de
-  los objetos. Configurable con `--max-object-size`.
-- **BR-g** — Guardrail de tamaño descomprimido acumulado: si la suma de bytes
-  descomprimidos leídos en toda la corrida supera **2 GiB** (valor por defecto
-  propuesto), la herramienta deja de leer objetos nuevos, informa por `stderr`
-  que el guardrail acumulado se alcanzó y que el escaneo quedó incompleto, y
-  termina reportando los matches encontrados hasta ese punto. Configurable con
-  `--max-total-size`. Cuenta como error a efectos de FR-e (exit code 2).
+- **BR-f** — Guardrail de tamaño descomprimido por
+  objeto: si el contenido descomprimido leído de un objeto supera **250 MiB**
+  (valor por defecto propuesto), se corta la lectura de ese objeto (objeto
+  cortado), se emite un aviso por `stderr` indicando que se alcanzó el límite,
+  y se continúa con el resto de los objetos. Configurable con
+  `--max-object-size`.
+- **BR-g** — Guardrail de tamaño descomprimido
+  acumulado: si la suma de bytes descomprimidos leídos en toda la corrida
+  supera **2 GiB** (valor por defecto propuesto), la herramienta deja de leer
+  objetos nuevos, informa por `stderr` que el guardrail acumulado se alcanzó y
+  que hubo escaneo incompleto, y termina reportando los matches encontrados
+  hasta ese punto. Configurable con `--max-total-size`. Cuenta como error a
+  efectos de FR-e (exit code 2).
 
 ## Requerimientos no funcionales
 
@@ -141,9 +183,9 @@ gente que no conoce la línea de comandos.
 - **NFR-b — Memoria con objetos grandes.** El uso de memoria por objeto en
   proceso es constante respecto de su tamaño total: lectura por streaming en
   chunks de 64 KiB, con un buffer de línea acotado a **1 MiB** por defecto
-  (configurable con `--max-line-size`). Una línea que exceda ese tamaño se
-  **saltea por completo** (no se busca el patrón en ninguna porción de ella)
-  y se emite un warning una única vez por objeto afectado — no se trunca para
+  (configurable con `--max-line-size`). Una línea que exceda ese tamaño es una
+  **línea salteada** (no se busca el patrón en ninguna porción de ella) y se
+  emite un aviso una única vez por objeto afectado — no se trunca para
   matchear, porque un truncado partiría un match real que cayera justo en el
   punto de corte y lo perdería en silencio. Memoria adicional estimada:
   ≤ 5 MiB por objeto en procesamiento simultáneo, por lo que con concurrencia
@@ -151,153 +193,36 @@ gente que no conoce la línea de comandos.
 - **NFR-c — Comportamiento ante fallos de red.** Un error transitorio de red
   (timeout, conexión reseteada, 5xx) al leer un objeto se reintenta hasta
   **3 intentos en total**, con backoff exponencial (500ms, 1s, 2s ± 20% de
-  jitter). Si los 3 intentos fallan, el objeto se marca como fallido (FR-f) y
-  la corrida continúa. Errores permanentes (403 Forbidden, 404 Not Found) no
-  se reintentan: se marcan como fallidos de inmediato.
+  jitter). Si los 3 intentos fallan, el objeto queda como objeto fallido
+  (FR-f) y la corrida continúa. Errores permanentes (403 Forbidden, 404 Not
+  Found) no se reintentan: el objeto queda como objeto fallido de inmediato.
 
-## Guardrail de concurrencia
+## Concurrencia
 
 - Por defecto, `gcsgrep` lee los objetos **secuencialmente** (equivalente a
   `--concurrency 1`).
 - Se puede pedir lectura en paralelo con `--concurrency N` (alias `-j N`).
-- `N` está acotado a un máximo de **32**; valores mayores son rechazados con un
-  error de uso (exit code 2) antes de arrancar la corrida, para que el flag no
-  se use como forma implícita de saltear los guardrails de costo/carga sobre
-  la API de GCS.
+- `N` está acotado a un máximo de **32**; valores mayores son un error de uso
+  (exit code 2) antes de arrancar la corrida, para que el flag no se use como
+  forma implícita de saltear los guardrails de costo/carga sobre la API de
+  GCS.
 - En modo concurrente, el orden de salida **no** coincide necesariamente con el
   orden de listado de objetos — cada objeto imprime sus resultados cuando
   termina de procesarse. Esto es comportamiento esperado, no un bug.
-- **Modelo de ejecución: worker pool con cola compartida.** Se lanzan `N`
-  workers (threads/goroutines/tareas, según la implementación) que consumen de
-  una cola común con la lista de objetos a procesar. Cada worker toma un
-  objeto, lo procesa de punta a punta, y cuando termina toma el siguiente de
-  la cola — no hay reparto en bloques fijos por adelantado, así que un objeto
-  grande no bloquea a los demás workers, que siguen sacando objetos chicos
-  mientras tanto.
-- Los contadores compartidos entre workers —bytes acumulados de BR-g, cantidad
-  de objetos procesados para el progreso de FR-g— deben ser **thread-safe**
-  (atomic o con lock). En particular, el corte del guardrail acumulado (BR-g)
-  tiene que evaluarse de forma segura entre los `N` workers para no permitir
-  que, por una condición de carrera, se lean más bytes de los que el límite
-  permite antes de que el corte surta efecto en todos los workers.
 
-## Decisiones tomadas
+Cómo se implementa (modelo de ejecución, contadores compartidos): ver
+`gcsgrep-design.md`.
 
-Las 10 preguntas abiertas del borrador original, resueltas:
+## Cómo sigue
 
-1. **Sabor de regex** → literal + regex básica estilo RE2 (sin backtracking
-   catastrófico). No configurable por flag en v1.
-2. **Autenticación** → solo Application Default Credentials (ADC). Sin soporte
-   de service account key file en v1.
-3. **Sintaxis de ubicación** → solo `gs://bucket/prefijo`. Sin forma corta sin
-   esquema, para no cerrarle la puerta a otros proveedores en el futuro.
-4. **Flags de grep en v1** → `-i`, `-n` (por defecto en el formato de salida),
-   `-l`, `-c`. `-v`, `-r`, `--include` quedan para iteraciones posteriores.
-5. **Binarios y `.gz`** → binarios se saltean (heurística de byte nulo);
-   `.gz` se descomprime al vuelo, sujeto a los guardrails de tamaño BR-f/BR-g.
-6. **Guardrails de costo** → guardrail de cantidad de objetos (BR-c, 1000 por
-   defecto) **más** guardrail de bytes descomprimidos por objeto (BR-f, 250
-   MiB) **más** guardrail acumulado de toda la corrida (BR-g, 2 GiB) — este
-   último surgió durante el refinamiento, no estaba en el borrador original.
-7. **Formato de salida** → `objeto:línea:texto`, color si hay TTY, plano si
-   hay pipe/redirección. Sin modo JSON en v1.
-8. **Exit codes** → convención de `grep` (0/1/2), con la particularidad de que
-   cualquier error parcial (objeto ilegible, guardrail de objeto o acumulado
-   alcanzado) fuerza exit code 2 aunque haya habido matches en otros objetos.
-9. **Concurrencia** → secuencial por defecto; paralelo opt-in con
-   `--concurrency N` / `-j N`, tope máximo de 32. El orden de salida no está
-   garantizado en modo concurrente.
-10. **Objeto que cambia mid-lectura** → no se detecta ni se fija la
-    generación al listar; se lee lo que GCS devuelva en el momento de la
-    lectura. GCS ya garantiza que no se mezclan bytes de dos versiones dentro
-    de una sola llamada de lectura.
+El pipeline de documentos del proyecto:
 
-## Esquema de arquitectura
-
-### Módulos
-
-```
-cli         → parsea argv/flags, valida combinaciones inválidas (-l + -c,
-              --concurrency fuera de rango), despacha al scanner, traduce
-              el resultado final a exit code (FR-8)
-scanner     → lista objetos bajo el prefijo vía gcsclient, aplica el
-              guardrail de cantidad (BR-3) antes de leer nada, arma el
-              worker pool (FR-13) y reparte objetos de una cola compartida,
-              agrega los contadores compartidos (bytes acumulados de BR-5,
-              progreso de FR-10) de forma thread-safe, y decide el
-              resultado global (¿hubo match? ¿hubo algún error?)
-reader      → por objeto individual: abre el stream vía gcsclient, detecta
-              binario (FR-11), descomprime .gz al vuelo (FR-12), aplica el
-              guardrail de tamaño por objeto (BR-4), aplica el límite de
-              línea (FR-15), reintenta ante fallos de red transitorios
-              (NFR-3), y usa match para evaluar cada línea
-match       → aplica el patrón (literal o regex básica, case-insensitive
-              si corresponde) sobre una línea de texto. Sin I/O — es la
-              pieza más fácil de testear unitariamente
-gcsclient   → única puerta de entrada a la API de GCS: listar objetos y
-              abrir su stream de lectura, con las credenciales ADC del
-              usuario. No expone ningún método de escritura, copia o
-              borrado — eso hace estructuralmente imposible que el resto
-              del código viole BR-1, no depende de que nadie se acuerde
-              de no llamar a un método de escritura
-output      → formatea resultados para stdout (objeto:línea:texto, color
-              si hay TTY — FR-3) y escribe warnings/progreso a stderr
-              (FR-9, FR-10), también con su propia detección de TTY
-```
-
-La dependencia va en una sola dirección: `cli → scanner → reader → gcsclient`,
-con `match` y `output` como hojas sin dependencias de negocio. `gcsclient` es
-el único módulo que conoce el SDK de GCS; `match` no sabe que existe una red,
-y eso es lo que permite testear el matching y el parseo de flags sin tocar
-un bucket real.
-
-### Flujo de datos
-
-```
-argv → cli (parsea + valida)
-         → scanner: lista objetos vía gcsclient, aplica BR-3
-             → worker pool (N workers, cola compartida)
-                 → por cada objeto: reader (gcsclient + match)
-                                        ↓
-                          resultado del objeto: matches / saltado / fallido
-                                        ↓
-                              output (stdout: matches · stderr: avisos)
-         ← scanner agrega el resultado global
-       → cli traduce a exit code (FR-8)
-```
-
-### Actores
-
-| Actor | Interacción |
-|---|---|
-| Persona operadora/desarrolladora | Ejecuta `gcsgrep` en una shell o script, lee stdout/stderr |
-| Script consumidor | Ejecuta `gcsgrep` y decide en base al **exit code**, no al texto |
-| Google Cloud Storage | Fuente de datos vía `gcsclient`; puede fallar por permisos, red, o no existir el bucket/objeto |
-
-### Riesgo conocido
-
-Un objeto puede sobreescribirse entre el momento en que `scanner` lo lista y
-el momento en que `reader` lo abre para leer. **Decisión: fuera de alcance
-en v1** — no se fija la generación del objeto al listar (ver decisión #10
-en "Decisiones tomadas"). Se acepta porque GCS ya garantiza que no se
-mezclan bytes de dos versiones dentro de una sola llamada de lectura, y el
-caso de uso principal (logs) tiende a agregar objetos nuevos en vez de
-sobreescribir los existentes. Queda anotado acá para que sea una decisión
-consciente, y aparece como no-objetivo explícito en la spec.
-
-## Cómo seguir
-
-Con las preguntas resueltas, el paso siguiente ya no es refinar este
-documento, sino convertirlo en la spec formal:
-
-1. Atomizar cada FR en formato Dado/Cuando/Entonces.
-2. Escribir el fundamento (y las excepciones) de cada BR.
-3. Escribir un VC (criterio de verificación) por cada FR y cada BR — incluidos
-   los guardrails nuevos (BR-f, BR-g) y el criterio de exit code de FR-e.
-4. Correr esos umbrales de NFR contra un benchmark real antes de congelarlos.
-5. Partir el resultado en `gcsgrep-plan.md` con ≥ 2 iteraciones — la Iteración
-   1 sugerida es: búsqueda literal/regex básica sobre un prefijo, `-i`/`-n`,
-   salida con nombre de objeto, streaming, solo lectura, exit codes estilo
-   grep. Concurrencia, `-l`/`-c`, `.gz` y los guardrails de tamaño pueden ir en
-   Iteración 1 si el tiempo lo permite, o pasar a Iteración 2 — es una decisión
-   de scoping, no de spec.
+1. [`gcsgrep-borrador.md`](./gcsgrep-borrador.md) — punto de partida (no se
+   modifica).
+2. **Este documento** — qué hay que resolver y con qué vocabulario.
+3. [`gcsgrep-design.md`](./gcsgrep-design.md) — decisiones, modelo de dominio y
+   arquitectura.
+4. [`gcsgrep-spec.md`](./gcsgrep-spec.md) — contrato verificable.
+5. [`gcsgrep-plan.md`](./gcsgrep-plan.md) — iteraciones.
+6. [`gcsgrep-cobertura-vc.md`](./gcsgrep-cobertura-vc.md) — evidencia de
+   verificación.
