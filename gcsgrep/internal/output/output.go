@@ -1,6 +1,6 @@
 // Package output writes gcsgrep's results and diagnostics.
-// Matches go to stdout so a script can pipe/parse them (FR-3, NFR-3 in the
-// spec: stdout stays clean). Warnings and errors go to stderr, never mixed
+// Matches go to stdout so a script can pipe/parse them (FR-3). Avisos and
+// mensajes de error go to stderr with their literal prefixes, never mixed
 // into stdout, so FR-9's "continue past a bad object" behavior never
 // corrupts the results a downstream consumer parses.
 package output
@@ -22,21 +22,21 @@ func New(stdout, stderr io.Writer) *Writer {
 }
 
 // Match prints one matching line in gcsgrep's default format:
-// object:line:text (FR-3, simplified for Iteration 1 — always plain text,
-// no TTY color detection yet; -n's line number is always included).
+// object:line:text (FR-3.1). Iteration 1 always prints plain text (FR-3.3);
+// TTY color (FR-3.2) is Iteration 2. The line number is always included,
+// which is why -n has no effect (FR-20).
 func (w *Writer) Match(object string, lineNum int, line string) {
 	fmt.Fprintf(w.Stdout, "%s:%d:%s\n", object, lineNum, line)
 }
 
-// Warning reports a recoverable, per-object condition (an unreadable
-// object, a binary skip, a long line skip) that must not abort the run
-// (FR-9, FR-11, FR-15).
+// Warning prints an aviso ("gcsgrep: warning: ..."): a condition the run
+// recovers from and continues past (FR-9, FR-11, FR-15, FR-17).
 func (w *Writer) Warning(format string, args ...any) {
 	fmt.Fprintf(w.Stderr, "gcsgrep: warning: "+format+"\n", args...)
 }
 
-// Error reports a condition that aborts the run entirely (a usage error, a
-// guardrail hit before any content was read, or a fatal setup failure).
+// Error prints a mensaje de error ("gcsgrep: error: ..."): a condition that
+// ends the run with exit code 2 (FR-1.4, FR-16, FR-22, BR-3).
 func (w *Writer) Error(format string, args ...any) {
 	fmt.Fprintf(w.Stderr, "gcsgrep: error: "+format+"\n", args...)
 }

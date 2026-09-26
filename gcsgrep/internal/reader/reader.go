@@ -1,8 +1,9 @@
 // Package reader processes a single GCS object by streaming: it never reads
 // the whole object into memory (NFR-2), detects binaries before matching
-// anything (FR-11), and refuses to partially match a line that exceeds the
-// configured buffer (FR-15) — see the package-level comment on readLine for
-// why partial matching would be a correctness bug, not just a memory one.
+// anything (FR-11), refuses to partially match a line that exceeds the line
+// buffer (FR-15), and hands every match to the caller as soon as it is found,
+// so the caller can print it right away (VC-21.3) and keep it even if the
+// stream fails later (NFR-3).
 package reader
 
 import (
@@ -15,15 +16,15 @@ import (
 )
 
 const (
-	// sniffSize is how many leading bytes we inspect for a null byte before
-	// deciding an object is binary (BR-4 in the original draft, now FR-11).
+	// sniffSize is how many leading bytes are inspected for a null byte
+	// before deciding an object is binary (FR-11).
 	sniffSize = 8192
 	// chunkSize is the underlying read buffer size; memory use per object
 	// stays bounded by this plus MaxLineSize, never by the object's total
 	// size (NFR-2).
 	chunkSize = 64 * 1024
-	// DefaultMaxLineSize is the line buffer cap used when Options.MaxLineSize
-	// is left at zero (FR-15's --max-line-size default of 1 MiB).
+	// DefaultMaxLineSize is the line buffer cap: lines longer than this are
+	// skipped whole (FR-15, 1 MiB fixed in v1).
 	DefaultMaxLineSize = 1 << 20
 )
 
@@ -33,22 +34,21 @@ type LineMatch struct {
 	Text    string
 }
 
-// ObjectResult is the outcome of processing a single object. Exactly one of
-// Failed, Skipped, or "matched normally" describes what happened; they are
-// mutually exclusive per object.
+// ObjectResult is the outcome of processing a single object. Skipped and
+// Failed are mutually exclusive; when neither is set the object was
+// processed completely.
 type ObjectResult struct {
-	Object  string
-	Matches []LineMatch
+	// MatchCount is how many matching lines were handed to emit.
+	MatchCount int
 
-	// Skipped means the object was deliberately not searched (it's binary).
-	// This is expected filtering, not an error — FR-8 does not treat it as
-	// a reason to exit 2.
+	// Skipped means the object was deliberately not searched (it is a
+	// binary object, FR-11). This is not an error (FR-8).
 	Skipped    bool
 	SkipReason string
 
-	// Failed means the object could not be read at all (permissions,
-	// corruption, I/O error). FR-9 requires the run to continue past it;
-	// FR-8 requires it to still force exit code 2 at the end.
+	// Failed means the stream broke before the object was fully read
+	// (NFR-3: "read interrupted"). Matches emitted before the failure stay
+	// emitted; FR-8 counts the object as an error.
 	Failed     bool
 	FailReason string
 
@@ -60,56 +60,54 @@ type ObjectResult struct {
 // Options configures how a single object is processed.
 type Options struct {
 	// MaxLineSize caps how many bytes of a single line are buffered before
-	// it's treated as "too long" and skipped whole. Zero means
-	// DefaultMaxLineSize.
+	// it's treated as too long and skipped whole. Zero means
+	// DefaultMaxLineSize. Only tests override it.
 	MaxLineSize int
 }
 
 // ProcessObject reads stream line by line, skips it whole if it looks
-// binary, matches every line against m, and reports lines that had to be
-// skipped for exceeding the line buffer. It never returns an error for
-// per-object problems — those are reported through the returned
-// ObjectResult so the caller (scanner) can apply FR-9's "continue past a
-// bad object" policy uniformly.
-func ProcessObject(stream io.Reader, objectName string, m *match.Matcher, opts Options) ObjectResult {
-	res := ObjectResult{Object: objectName}
+// binary, matches every line against m, and calls emit for each matching
+// line in ascending line order, as soon as it is found. It never returns an
+// error for per-object problems — those are reported through the returned
+// ObjectResult so the caller (scanner) can apply FR-9's "continue past a bad
+// object" policy uniformly.
+func ProcessObject(stream io.Reader, m *match.Matcher, opts Options, emit func(LineMatch)) ObjectResult {
+	var res ObjectResult
 
 	maxLineSize := opts.MaxLineSize
 	if maxLineSize <= 0 {
 		maxLineSize = DefaultMaxLineSize
 	}
 
-	isBinary, combined, err := sniffBinary(stream)
-	if err != nil {
-		res.Failed = true
-		res.FailReason = fmt.Sprintf("could not read the object: %v", err)
-		return res
-	}
+	isBinary, combined := sniffBinary(stream)
 	if isBinary {
 		res.Skipped = true
-		res.SkipReason = "binary object (null byte found in the first 8 KiB)"
+		res.SkipReason = "binary object"
 		return res
 	}
 
 	br := bufio.NewReaderSize(combined, chunkSize)
 	lineNum := 0
 	for {
-		line, truncated, err := readLine(br, maxLineSize)
+		line, tooLong, err := readLine(br, maxLineSize)
+		if err == io.EOF {
+			break
+		}
 		if err != nil {
-			if err == io.EOF {
-				break
-			}
 			res.Failed = true
-			res.FailReason = fmt.Sprintf("error reading the object: %v", err)
+			res.FailReason = fmt.Sprintf("read interrupted: %v", err)
 			return res
 		}
 		lineNum++
-		if truncated {
+		if tooLong {
 			res.LongLineWarn = true
 			continue
 		}
 		if m.MatchString(line) {
-			res.Matches = append(res.Matches, LineMatch{LineNum: lineNum, Text: line})
+			res.MatchCount++
+			if emit != nil {
+				emit(LineMatch{LineNum: lineNum, Text: line})
+			}
 		}
 	}
 	return res
@@ -118,41 +116,58 @@ func ProcessObject(stream io.Reader, objectName string, m *match.Matcher, opts O
 // sniffBinary peeks at the first sniffSize bytes of r looking for a null
 // byte, then reconstructs the full stream (peeked bytes + the rest of r) so
 // the caller can still read from the beginning regardless of the verdict.
-func sniffBinary(r io.Reader) (isBinary bool, combined io.Reader, err error) {
+// A 0-byte object is not binary (FR-21.1). If the stream breaks while
+// peeking, the bytes already received are still processed and the error is
+// replayed right after them, so the lines received before the break are
+// matched and printed (NFR-3) instead of being lost.
+func sniffBinary(r io.Reader) (isBinary bool, combined io.Reader) {
 	buf := make([]byte, sniffSize)
 	n, err := io.ReadFull(r, buf)
-	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
-		return false, nil, err
-	}
 	peeked := buf[:n]
 	isBinary = bytes.IndexByte(peeked, 0) >= 0
-	combined = io.MultiReader(bytes.NewReader(peeked), r)
-	return isBinary, combined, nil
+	switch err {
+	case nil:
+		combined = io.MultiReader(bytes.NewReader(peeked), r)
+	case io.EOF, io.ErrUnexpectedEOF:
+		combined = bytes.NewReader(peeked)
+	default:
+		combined = io.MultiReader(bytes.NewReader(peeked), errReader{err})
+	}
+	return isBinary, combined
 }
+
+// errReader always fails with err.
+type errReader struct{ err error }
+
+func (e errReader) Read([]byte) (int, error) { return 0, e.err }
 
 // readLine returns the next line from br (without its trailing newline).
 //
 // If the line is longer than maxLineSize, it is NOT truncated and matched
 // against the buffered prefix — that would risk splitting a real match
-// right at the cut point and silently missing it (the false-negative bug
-// FR-15 exists to prevent). Instead every byte of that line is consumed and
-// discarded, and readLine reports truncated=true with an empty line: the
+// right at the cut point and silently missing it (the false negative FR-15
+// exists to prevent). Instead every byte of that line is consumed and
+// discarded, and readLine reports tooLong=true with an empty line: the
 // caller must not attempt to match it.
 //
-// io.EOF is returned once there is no more data at all. A final line with
-// no trailing newline is still returned as a complete line, matching
-// grep's behavior.
-func readLine(br *bufio.Reader, maxLineSize int) (line string, truncated bool, err error) {
+// io.EOF is returned once there is no more data at all. A final line with no
+// trailing newline is still returned as a complete line (FR-21.2). Any other
+// read error is returned as-is, even mid-line, so a broken stream is never
+// mistaken for the end of the object (NFR-3).
+func readLine(br *bufio.Reader, maxLineSize int) (line string, tooLong bool, err error) {
 	var buf []byte
 	sawAnyByte := false
 
 	for {
 		b, readErr := br.ReadByte()
 		if readErr != nil {
+			if readErr != io.EOF {
+				return "", false, readErr
+			}
 			if !sawAnyByte {
 				return "", false, io.EOF
 			}
-			if truncated {
+			if tooLong {
 				return "", true, nil
 			}
 			return string(buf), false, nil
@@ -160,15 +175,15 @@ func readLine(br *bufio.Reader, maxLineSize int) (line string, truncated bool, e
 		sawAnyByte = true
 
 		if b == '\n' {
-			if truncated {
+			if tooLong {
 				return "", true, nil
 			}
 			return string(buf), false, nil
 		}
 
-		if !truncated {
+		if !tooLong {
 			if len(buf) >= maxLineSize {
-				truncated = true
+				tooLong = true
 				buf = nil // stop holding the oversized prefix; it's never used
 			} else {
 				buf = append(buf, b)

@@ -4,55 +4,15 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
+	"fmt"
 	"strings"
 	"testing"
 
 	"gcsgrep/internal/gcsclient"
+	"gcsgrep/internal/gcsclient/gcsclienttest"
 	"gcsgrep/internal/match"
 	"gcsgrep/internal/output"
 )
-
-// fakeClient is an in-memory gcsclient.Client used to unit-test scanner
-// without touching real GCS. Objects map to their content; a name present
-// in unreadable causes Open to fail, simulating a permission error (FR-9).
-type fakeClient struct {
-	objects     map[string]string // name -> content
-	unreadable  map[string]bool
-	listErr     error
-	listedNames []string // controls listing order for deterministic tests
-}
-
-func (f *fakeClient) List(ctx context.Context, bucket, prefix string) ([]gcsclient.ObjectInfo, error) {
-	if f.listErr != nil {
-		return nil, f.listErr
-	}
-	var out []gcsclient.ObjectInfo
-	names := f.listedNames
-	if names == nil {
-		for name := range f.objects {
-			names = append(names, name)
-		}
-	}
-	for _, name := range names {
-		if !strings.HasPrefix(name, prefix) {
-			continue
-		}
-		out = append(out, gcsclient.ObjectInfo{Name: name, Size: int64(len(f.objects[name]))})
-	}
-	return out, nil
-}
-
-func (f *fakeClient) Open(ctx context.Context, bucket, object string) (io.ReadCloser, error) {
-	if f.unreadable[object] {
-		return nil, errors.New("permission denied")
-	}
-	content, ok := f.objects[object]
-	if !ok {
-		return nil, errors.New("not found")
-	}
-	return io.NopCloser(strings.NewReader(content)), nil
-}
 
 func mustMatcher(t *testing.T, pattern string) *match.Matcher {
 	t.Helper()
@@ -63,126 +23,205 @@ func mustMatcher(t *testing.T, pattern string) *match.Matcher {
 	return m
 }
 
-// VC-8 (a): a run with a guaranteed match and every object readable exits 0.
-func TestRun_ExitMatchWhenSomethingMatches(t *testing.T) {
-	client := &fakeClient{objects: map[string]string{
-		"logs/app1.log": "connection timeout after 30s\n",
-		"logs/app2.log": "all good\n",
+type result struct {
+	code           int
+	stdout, stderr string
+}
+
+func run(t *testing.T, client gcsclient.Client, cfg Config, pattern string) result {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	code := Run(context.Background(), client, cfg, mustMatcher(t, pattern), output.New(&stdout, &stderr))
+	return result{code, stdout.String(), stderr.String()}
+}
+
+func cfg(prefix string) Config {
+	return Config{Bucket: "b", Prefix: prefix, MaxObjects: DefaultMaxObjects}
+}
+
+func expect(t *testing.T, got result, code int, stdout, stderr string) {
+	t.Helper()
+	if got.code != code {
+		t.Errorf("exit code = %d, want %d", got.code, code)
+	}
+	if got.stdout != stdout {
+		t.Errorf("stdout = %q, want %q", got.stdout, stdout)
+	}
+	if got.stderr != stderr {
+		t.Errorf("stderr = %q, want %q", got.stderr, stderr)
+	}
+}
+
+// VC-1.1, VC-8.1: exact stdout for the logs/ data set, exit 0.
+func TestRun_Results(t *testing.T) {
+	client := &gcsclienttest.Fake{Objects: []gcsclienttest.Object{
+		{Name: "logs/a.log", Content: "INFO start\nERROR timeout\n"},
+		{Name: "logs/b.log", Content: "INFO ok\n"},
 	}}
-	var stdout, stderr bytes.Buffer
-	w := output.New(&stdout, &stderr)
-
-	code := Run(context.Background(), client, Config{Bucket: "b", MaxObjects: DefaultMaxObjects}, mustMatcher(t, "timeout"), w)
-
-	if code != ExitMatch {
-		t.Errorf("exit code = %d, want %d (ExitMatch)", code, ExitMatch)
-	}
-	if !strings.Contains(stdout.String(), "logs/app1.log:1:connection timeout after 30s") {
-		t.Errorf("stdout does not contain the expected result: %q", stdout.String())
-	}
-	if stderr.Len() != 0 {
-		t.Errorf("expected nothing on stderr, got: %q", stderr.String())
-	}
+	expect(t, run(t, client, cfg("logs/"), "timeout"), ExitMatch, "logs/a.log:2:ERROR timeout\n", "")
 }
 
-// VC-8 (b): no matches and everything readable, exit 1.
-func TestRun_ExitNoMatchWhenNothingMatches(t *testing.T) {
-	client := &fakeClient{objects: map[string]string{
-		"logs/app2.log": "all good\n",
+// VC-8.2: no matches and no errors, exit 1.
+func TestRun_NoMatch(t *testing.T) {
+	client := &gcsclienttest.Fake{Objects: []gcsclienttest.Object{
+		{Name: "logs/a.log", Content: "INFO start\nERROR timeout\n"},
 	}}
-	var stdout, stderr bytes.Buffer
-	w := output.New(&stdout, &stderr)
-
-	code := Run(context.Background(), client, Config{Bucket: "b", MaxObjects: DefaultMaxObjects}, mustMatcher(t, "timeout"), w)
-
-	if code != ExitNoMatch {
-		t.Errorf("exit code = %d, want %d (ExitNoMatch)", code, ExitNoMatch)
-	}
-	if stdout.Len() != 0 {
-		t.Errorf("expected no results on stdout: %q", stdout.String())
-	}
+	expect(t, run(t, client, cfg("logs/"), "patron_inexistente_xyz"), ExitNoMatch, "", "")
 }
 
-// VC-8 (c) / VC-9: an unreadable object forces exit 2 even though other
-// objects do match, and the run keeps processing the rest (FR-9) instead
-// of aborting as soon as it hits the problematic object.
-func TestRun_ExitErrorOnUnreadableObjectButKeepsGoing(t *testing.T) {
-	client := &fakeClient{
-		objects: map[string]string{
-			"logs/app1.log": "connection timeout after 30s\n",
-			"logs/secret":   "content should not matter",
-		},
-		unreadable: map[string]bool{"logs/secret": true},
-	}
-	var stdout, stderr bytes.Buffer
-	w := output.New(&stdout, &stderr)
-
-	code := Run(context.Background(), client, Config{Bucket: "b", MaxObjects: DefaultMaxObjects}, mustMatcher(t, "timeout"), w)
-
-	if code != ExitError {
-		t.Fatalf("exit code = %d, want %d (ExitError) even though another object matched", code, ExitError)
-	}
-	if !strings.Contains(stdout.String(), "logs/app1.log:1:connection timeout after 30s") {
-		t.Errorf("the readable object should still be processed and appear on stdout: %q", stdout.String())
-	}
-	if !strings.Contains(stderr.String(), "logs/secret") {
-		t.Errorf("stderr should mention the unreadable object: %q", stderr.String())
-	}
-}
-
-// BR-3 / VC-17: if the object count exceeds the limit, the run aborts
-// BEFORE reading any content (zero calls to Open).
-func TestRun_ObjectCountGuardrailAbortsBeforeReadingContent(t *testing.T) {
-	opened := map[string]bool{}
-	client := &countingClient{
-		fakeClient: fakeClient{objects: map[string]string{
-			"a": "x", "b": "x", "c": "x", "d": "x",
-		}},
-		opened: opened,
-	}
-	var stdout, stderr bytes.Buffer
-	w := output.New(&stdout, &stderr)
-
-	code := Run(context.Background(), client, Config{Bucket: "b", MaxObjects: 2}, mustMatcher(t, "x"), w)
-
-	if code != ExitError {
-		t.Fatalf("exit code = %d, want %d (ExitError) for exceeding the count guardrail", code, ExitError)
-	}
-	if len(opened) != 0 {
-		t.Errorf("should not have opened any object after exceeding the guardrail, opened: %v", opened)
-	}
-	if stdout.Len() != 0 {
-		t.Errorf("expected no results on stdout: %q", stdout.String())
-	}
-}
-
-// With --max 0 (or any sufficiently high value) the guardrail does not
-// block the run and every object is processed.
-func TestRun_ObjectCountGuardrailDisabledWithZero(t *testing.T) {
-	client := &fakeClient{objects: map[string]string{
-		"a": "match here", "b": "match here", "c": "match here", "d": "match here",
+// VC-28.1 / FR-19.1: objects in listing order, lines in ascending order.
+func TestRun_SequentialOrder(t *testing.T) {
+	client := &gcsclienttest.Fake{Objects: []gcsclienttest.Object{
+		{Name: "ord/a.log", Content: "match 1\nmatch 2\n"},
+		{Name: "ord/b.log", Content: "match 1\nmatch 2\n"},
+		{Name: "ord/c.log", Content: "match 1\nmatch 2\n"},
 	}}
-	var stdout, stderr bytes.Buffer
-	w := output.New(&stdout, &stderr)
+	want := "ord/a.log:1:match 1\nord/a.log:2:match 2\n" +
+		"ord/b.log:1:match 1\nord/b.log:2:match 2\n" +
+		"ord/c.log:1:match 1\nord/c.log:2:match 2\n"
+	expect(t, run(t, client, cfg("ord/"), "match"), ExitMatch, want, "")
+}
 
-	code := Run(context.Background(), client, Config{Bucket: "b", MaxObjects: 0}, mustMatcher(t, "match"), w)
+// VC-27 / FR-18: a prefix without a trailing slash is passed as-is to the
+// listing, so it also covers "logs-old/".
+func TestRun_PrefixWithoutTrailingSlash(t *testing.T) {
+	client := &gcsclienttest.Fake{Objects: []gcsclienttest.Object{
+		{Name: "pfx/logs-old/b.log", Content: "timeout\n"},
+		{Name: "pfx/logs/a.log", Content: "timeout\n"},
+		{Name: "pfx/other/c.log", Content: "timeout\n"},
+	}}
+	expect(t, run(t, client, cfg("pfx/logs"), "timeout"), ExitMatch,
+		"pfx/logs-old/b.log:1:timeout\npfx/logs/a.log:1:timeout\n", "")
+}
 
-	if code != ExitMatch {
-		t.Fatalf("exit code = %d, want %d (ExitMatch) with the guardrail disabled", code, ExitMatch)
+// VC-8.3, VC-9.1, VC-9.3, VC-9.4: an object that cannot be opened is an
+// objeto fallido with the literal cause; the run continues and exits 2.
+func TestRun_ObjectFailsToOpen(t *testing.T) {
+	cases := []struct {
+		name    string
+		openErr error
+		cause   string
+	}{
+		{"FR-9.1 permission denied", fmt.Errorf("%w: googleapi: Error 403", gcsclient.ErrPermissionDenied), "permission denied"},
+		{"FR-9.3 object not found", fmt.Errorf("%w: storage: object doesn't exist", gcsclient.ErrObjectNotFound), "object not found"},
+		{"FR-9.4 other 4xx", errors.New("googleapi: Error 400: customer-supplied encryption key required"), "read failed: googleapi: Error 400: customer-supplied encryption key required"},
 	}
-	if strings.Count(stdout.String(), "\n") != 4 {
-		t.Errorf("expected 4 result lines (one per object), got: %q", stdout.String())
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client := &gcsclienttest.Fake{Objects: []gcsclienttest.Object{
+				{Name: "x/bad.log", OpenErr: tc.openErr},
+				{Name: "x/ok.log", Content: "timeout\n"},
+			}}
+			expect(t, run(t, client, cfg("x/"), "timeout"), ExitError,
+				"x/ok.log:1:timeout\n", "gcsgrep: warning: x/bad.log: "+tc.cause+"\n")
+		})
 	}
 }
 
-// countingClient wraps fakeClient and records every object name passed to
-// Open, so guardrail tests can assert zero content reads happened.
-type countingClient struct {
-	fakeClient
-	opened map[string]bool
+// VC-25.3, VC-25.4: listing errors end the run with a mensaje de error and
+// no object is opened.
+func TestRun_ListFails(t *testing.T) {
+	cases := []struct {
+		name    string
+		listErr error
+		stderr  string
+	}{
+		{"FR-16.3 permission denied", fmt.Errorf("%w: googleapi: Error 403", gcsclient.ErrPermissionDenied), "gcsgrep: error: permission denied listing gs://b/logs/\n"},
+		{"FR-16.4 bucket does not exist", fmt.Errorf("%w: storage: bucket doesn't exist", gcsclient.ErrBucketNotFound), "gcsgrep: error: bucket b does not exist\n"},
+		{"other error", errors.New("boom"), "gcsgrep: error: could not list gs://b/logs/: boom\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client := &gcsclienttest.Fake{ListErr: tc.listErr}
+			expect(t, run(t, client, cfg("logs/"), "timeout"), ExitError, "", tc.stderr)
+			if n := len(client.Opened()); n != 0 {
+				t.Errorf("opened %d objects after a failed listing", n)
+			}
+		})
+	}
 }
 
-func (c *countingClient) Open(ctx context.Context, bucket, object string) (io.ReadCloser, error) {
-	c.opened[object] = true
-	return c.fakeClient.Open(ctx, bucket, object)
+// VC-26 / FR-17: a location with no objects is an aviso and exit 1, not an
+// error.
+func TestRun_NoObjects(t *testing.T) {
+	client := &gcsclienttest.Fake{}
+	expect(t, run(t, client, cfg("prefijo-sin-objetos/"), "timeout"), ExitNoMatch, "",
+		"gcsgrep: warning: no objects under gs://b/prefijo-sin-objetos/\n")
+}
+
+func tenObjects() *gcsclienttest.Fake {
+	f := &gcsclienttest.Fake{}
+	for i := 0; i < 10; i++ {
+		f.Objects = append(f.Objects, gcsclienttest.Object{Name: fmt.Sprintf("max/%02d.log", i), Content: "timeout\n"})
+	}
+	return f
+}
+
+// VC-17.1 / BR-3: over the limit, the run aborts before opening any object.
+func TestRun_ObjectCountGuardrail(t *testing.T) {
+	client := tenObjects()
+	got := run(t, client, Config{Bucket: "b", Prefix: "max/", MaxObjects: 5}, "timeout")
+	expect(t, got, ExitError, "",
+		"gcsgrep: error: the prefix has 10 objects, which exceeds the limit of 5 (use --max to raise it, or --max 0 to disable it)\n")
+	if client.ListCalls() != 1 || len(client.Opened()) != 0 {
+		t.Errorf("want 1 listing and 0 opens, got %d and %d", client.ListCalls(), len(client.Opened()))
+	}
+}
+
+// VC-17.2, VC-17.3: a raised or disabled limit processes every object.
+func TestRun_ObjectCountGuardrailRaisedOrDisabled(t *testing.T) {
+	for _, max := range []int{20, 0} {
+		client := tenObjects()
+		got := run(t, client, Config{Bucket: "b", Prefix: "max/", MaxObjects: max}, "timeout")
+		if got.code != ExitMatch || len(client.Opened()) != 10 {
+			t.Errorf("--max %d: exit %d, %d opens; want exit 0 and 10 opens", max, got.code, len(client.Opened()))
+		}
+	}
+}
+
+// VC-11 / FR-11: a binary object is skipped with the literal aviso and is
+// not an error.
+func TestRun_BinarySkipped(t *testing.T) {
+	client := &gcsclienttest.Fake{Objects: []gcsclienttest.Object{
+		{Name: "bin/a.log", Content: "timeout\n"},
+		{Name: "bin/icon.png", Content: "\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR timeout"},
+	}}
+	expect(t, run(t, client, cfg("bin/"), "timeout"), ExitMatch,
+		"bin/a.log:1:timeout\n", "gcsgrep: warning: bin/icon.png: skipped (binary object)\n")
+}
+
+// VC-24 / FR-15: lines over 1 MiB are skipped with exactly one aviso per
+// object; they are not an error.
+func TestRun_LongLinesSkipped(t *testing.T) {
+	long5 := strings.Repeat("x", 2*1024*1024) + "timeout" + strings.Repeat("x", 3*1024*1024)
+	long2 := strings.Repeat("y", 2*1024*1024)
+	client := &gcsclienttest.Fake{Objects: []gcsclienttest.Object{
+		{Name: "long/x.log", Content: "timeout antes\n" + long5 + "\ntimeout despues\n" + long2 + "\n"},
+	}}
+	expect(t, run(t, client, cfg("long/"), "timeout"), ExitMatch,
+		"long/x.log:1:timeout antes\nlong/x.log:3:timeout despues\n",
+		"gcsgrep: warning: long/x.log: skipped lines longer than 1 MiB\n")
+}
+
+// VC-30.1 / FR-21.1: a 0-byte object produces no output at all.
+func TestRun_EmptyObject(t *testing.T) {
+	client := &gcsclienttest.Fake{Objects: []gcsclienttest.Object{
+		{Name: "e/a.log", Content: "timeout\n"},
+		{Name: "e/empty.log", Content: ""},
+	}}
+	expect(t, run(t, client, cfg("e/"), "timeout"), ExitMatch, "e/a.log:1:timeout\n", "")
+}
+
+// VC-23.5 (Iteration 1 slice) / NFR-3: a stream that breaks mid-read keeps
+// the matches already printed (once), is an objeto fallido, and the object is
+// not reopened.
+func TestRun_ReadInterrupted(t *testing.T) {
+	client := &gcsclienttest.Fake{Objects: []gcsclienttest.Object{
+		{Name: "r/mid.log", Content: "timeout uno\nINFO\n", ReadErr: errors.New("connection reset")},
+	}}
+	expect(t, run(t, client, cfg("r/"), "timeout"), ExitError,
+		"r/mid.log:1:timeout uno\n", "gcsgrep: warning: r/mid.log: read interrupted: connection reset\n")
+	if n := len(client.Opened()); n != 1 {
+		t.Errorf("opened %d times, want exactly 1 (no retry)", n)
+	}
 }

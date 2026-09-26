@@ -1,11 +1,17 @@
 // Package cli parses gcsgrep's argv into a structured Args value. Iteration
 // 1's surface is: gcsgrep [-i] [-n] [--max N] PATTERN gs://bucket[/prefix].
+//
+// Every error Parse returns is a usage error (exit code 2) whose message is
+// meant to follow the "gcsgrep: error: " prefix (FR-16.1, FR-22).
 package cli
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"gcsgrep/internal/scanner"
@@ -20,27 +26,25 @@ type Args struct {
 	MaxObjects int
 }
 
-// Parse parses argv (os.Args[1:]) into Args. On a usage error it returns a
-// message already meant for the user, matching the rest of gcsgrep's
-// diagnostics.
+// Parse parses argv (os.Args[1:]) into Args.
 func Parse(argv []string) (Args, error) {
 	fs := flag.NewFlagSet("gcsgrep", flag.ContinueOnError)
-	fs.SetOutput(discard{})
+	fs.SetOutput(io.Discard)
 
 	ignoreCase := fs.Bool("i", false, "case-insensitive search")
-	// -n is accepted as a silent no-op: the default output format already
-	// always includes the line number (decision recorded in
-	// gcsgrep-design.md, "Decisiones de diseño" #4).
+	// -n is accepted with no effect: the output format always includes the
+	// line number (FR-20, decision #4 in gcsgrep-design.md).
 	fs.Bool("n", true, "show line numbers (always on)")
-	maxObjects := fs.Int("max", scanner.DefaultMaxObjects, "cap on the number of objects to scan under the prefix (0 disables the guardrail)")
+	maxObjects := &nonNegativeInt{flagName: "--max", value: scanner.DefaultMaxObjects}
+	fs.Var(maxObjects, "max", "cap on the number of objects to scan under the prefix (0 disables the guardrail)")
 
 	if err := fs.Parse(argv); err != nil {
-		return Args{}, fmt.Errorf("usage: gcsgrep [-i] [--max N] PATTERN gs://bucket/prefix (%v)", err)
+		return Args{}, translateFlagError(err, maxObjects)
 	}
 
 	rest := fs.Args()
 	if len(rest) != 2 {
-		return Args{}, fmt.Errorf("usage: gcsgrep [-i] [--max N] PATTERN gs://bucket/prefix")
+		return Args{}, fmt.Errorf("expected 2 arguments (PATTERN and LOCATION), got %d", len(rest)) // FR-22.2
 	}
 
 	bucket, prefix, err := parseLocation(rest[1])
@@ -53,16 +57,15 @@ func Parse(argv []string) (Args, error) {
 		Bucket:     bucket,
 		Prefix:     prefix,
 		IgnoreCase: *ignoreCase,
-		MaxObjects: *maxObjects,
+		MaxObjects: maxObjects.value,
 	}, nil
 }
 
 // parseLocation parses gs://bucket/prefix (FR-1, FR-2). Only the gs://
-// scheme is accepted — no bucket/prefix shorthand (decision #3 in
-// gcsgrep-design.md, to leave the door open for other providers
-// later without ambiguity). A path with no trailing slash is a name
-// prefix, not a "folder" — GCS has no real folders, and gcsclient.List
-// forwards it as-is to the Objects query.
+// scheme is accepted — no bucket/prefix shorthand (FR-16.1, decision #3 in
+// gcsgrep-design.md). A prefix with no trailing slash is a name prefix, not
+// a "folder" (FR-18): GCS has no real folders, and gcsclient.List forwards
+// it as-is to the listing query.
 func parseLocation(location string) (bucket, prefix string, err error) {
 	if !strings.HasPrefix(location, "gs://") {
 		return "", "", fmt.Errorf("invalid location %q: must start with gs://", location)
@@ -77,8 +80,47 @@ func parseLocation(location string) (bucket, prefix string, err error) {
 	return u.Host, strings.TrimPrefix(u.Path, "/"), nil
 }
 
-// discard suppresses flag's default usage output to stderr; cli.Parse
-// returns its own error instead.
-type discard struct{}
+// translateFlagError turns the flag package's errors into gcsgrep's usage
+// messages (FR-22). Value errors are taken from the flag values themselves,
+// because the flag package rewrites the flag name ("-max" instead of the
+// "--max" the user typed).
+func translateFlagError(err error, values ...*nonNegativeInt) error {
+	for _, v := range values {
+		if v.err != nil {
+			return v.err // FR-22.3, FR-22.4
+		}
+	}
+	if errors.Is(err, flag.ErrHelp) {
+		return errors.New("unknown flag -h")
+	}
+	const undefined = "flag provided but not defined: "
+	if msg := err.Error(); strings.HasPrefix(msg, undefined) {
+		return fmt.Errorf("unknown flag %s", strings.TrimPrefix(msg, undefined)) // FR-22.1
+	}
+	return err
+}
 
-func (discard) Write(p []byte) (int, error) { return len(p), nil }
+// nonNegativeInt is a flag.Value for limit flags (--max; later
+// --max-object-size and --max-total-size) that accepts integers >= 0 and
+// records a spec-formatted error otherwise.
+type nonNegativeInt struct {
+	flagName string
+	value    int
+	err      error
+}
+
+func (n *nonNegativeInt) String() string { return strconv.Itoa(n.value) }
+
+func (n *nonNegativeInt) Set(s string) error {
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		n.err = fmt.Errorf("invalid value %q for %s: must be an integer", s, n.flagName)
+		return n.err
+	}
+	if v < 0 {
+		n.err = fmt.Errorf("invalid value %q for %s: must be >= 0", s, n.flagName)
+		return n.err
+	}
+	n.value = v
+	return nil
+}

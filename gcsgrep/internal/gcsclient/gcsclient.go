@@ -1,16 +1,18 @@
-// Package gcsclient is the only place in gcsgrep that imports the GCS SDK.
-// The Client interface it exposes has no write, delete, or permission
-// methods — that omission is what makes BR-1 ("gcsgrep never writes to
-// GCS") a structural property of the code instead of a rule someone has to
-// remember to follow.
+// Package gcsclient is gcsgrep's anti-corruption layer over Google Cloud
+// Storage (see "Contexto delimitado" in gcsgrep-design.md).
+//
+// This file holds the SDK-free part of the package: the Client interface the
+// rest of gcsgrep depends on, and the domain errors the GCS implementation
+// (gcs.go) translates SDK errors into. The interface has no write, delete, or
+// permission methods — that omission is what makes BR-1 ("gcsgrep never
+// writes to GCS") a structural property of the code instead of a rule someone
+// has to remember to follow (VC-15.2).
 package gcsclient
 
 import (
 	"context"
+	"errors"
 	"io"
-
-	"cloud.google.com/go/storage"
-	"google.golang.org/api/iterator"
 )
 
 // ObjectInfo describes a listed object without its content.
@@ -21,46 +23,27 @@ type ObjectInfo struct {
 
 // Client is the read-only surface gcsgrep uses to talk to GCS.
 type Client interface {
-	// List returns every object under bucket/prefix. It never reads object
-	// content — it's the cheap listing call the BR-3 count guardrail relies
-	// on before any content is read.
+	// List returns every object under bucket/prefix, in the order GCS lists
+	// them (lexicographic by name). It never reads object content — it's the
+	// cheap listing call the BR-3 count guardrail relies on before any content
+	// is read.
 	List(ctx context.Context, bucket, prefix string) ([]ObjectInfo, error)
 	// Open returns a streaming reader for a single object's content. The
 	// caller is responsible for closing it.
 	Open(ctx context.Context, bucket, object string) (io.ReadCloser, error)
 }
 
-type gcsClient struct {
-	sc *storage.Client
-}
-
-// New builds a Client authenticated via Application Default Credentials —
-// gcsgrep never accepts a service-account key file (decision recorded in
-// gcsgrep-design.md, decision #2).
-func New(ctx context.Context) (Client, error) {
-	sc, err := storage.NewClient(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &gcsClient{sc: sc}, nil
-}
-
-func (c *gcsClient) List(ctx context.Context, bucket, prefix string) ([]ObjectInfo, error) {
-	it := c.sc.Bucket(bucket).Objects(ctx, &storage.Query{Prefix: prefix})
-	var out []ObjectInfo
-	for {
-		attrs, err := it.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, ObjectInfo{Name: attrs.Name, Size: attrs.Size})
-	}
-	return out, nil
-}
-
-func (c *gcsClient) Open(ctx context.Context, bucket, object string) (io.ReadCloser, error) {
-	return c.sc.Bucket(bucket).Object(object).NewReader(ctx)
-}
+// Domain errors. Implementations wrap them (errors.Is still matches) so the
+// rest of gcsgrep can decide which message to print without importing the
+// GCS SDK.
+var (
+	// ErrPermissionDenied: the credentials cannot list the bucket (FR-16.3)
+	// or read the object (FR-9.1). HTTP 403.
+	ErrPermissionDenied = errors.New("permission denied")
+	// ErrBucketNotFound: the bucket in the location does not exist
+	// (FR-16.4). HTTP 404 on listing.
+	ErrBucketNotFound = errors.New("bucket does not exist")
+	// ErrObjectNotFound: a listed object no longer exists when opened
+	// (FR-9.3). HTTP 404 on opening.
+	ErrObjectNotFound = errors.New("object not found")
+)

@@ -21,14 +21,17 @@ descritos en la sección "Arquitectura" de `gcsgrep-design.md`.
 cd gcsgrep
 go build -o /tmp/gcsgrep ./cmd/gcsgrep   # binario
 go vet ./...                              # sin warnings
-go test ./...                             # tests unitarios
+go test ./...                             # tests unitarios, incluidos los
+                                          # chequeos estáticos de VC-1.2 y
+                                          # VC-15.2 (internal/invariants)
 ```
 
 El entorno de prueba real (proyecto de GCP, buckets, service accounts y
 credenciales ADC) está descrito en la sección "Datos de prueba" de la spec.
 Los nombres concretos no están versionados en el repo a propósito: están en
 `gcsgrep/testenv.local.md` (gitignoreado); si no lo tenés, pedíselo a quien
-armó el entorno en vez de crear uno nuevo.
+armó el entorno en vez de crear uno nuevo. Los datos de prueba y las service
+accounts se crean con `gcsgrep/testdata/setup-testdata.sh`.
 
 ## Resumen
 

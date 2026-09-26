@@ -86,6 +86,8 @@ prueba (región `us-central1`). Los nombres reales del proyecto, de los
 buckets y de las service accounts no se versionan: están en
 `gcsgrep/testenv.local.md`. En la spec se escriben como `<bucket>`,
 `<bucket-completo>` y `<sa-…>`. En los contenidos, `\n` es un salto de línea.
+Todos estos datos y credenciales se crean con
+`gcsgrep/testdata/setup-testdata.sh`.
 
 ### Credenciales
 
