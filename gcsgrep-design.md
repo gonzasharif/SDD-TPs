@@ -302,18 +302,19 @@ nuevos en vez de sobreescribir los existentes.
 
 ### 11. Reintentos ante fallos de red
 
-**Elegido:** un error transitorio (timeout, conexión reseteada, 5xx) al
-listar o al abrir un objeto se reintenta hasta 3 intentos en total, con
-esperas de 500ms antes del 2º intento y 1s antes del 3º, ± 20% de jitter.
-403 y 404 no se reintentan. Un error a mitad de la lectura de un objeto no
+**Elegido:** un error transitorio (timeout, conexión reseteada, HTTP 408,
+429 o 5xx) al listar o al abrir un objeto se reintenta hasta 3 intentos en
+total, con esperas de 500ms antes del 2º intento y 1s antes del 3º, ± 20% de
+jitter. Los demás errores HTTP 4xx (403, 404, etc.) no se reintentan. Un error a mitad de la lectura de un objeto no
 se reintenta: el objeto queda como objeto fallido y las líneas ya impresas
 se mantienen.
 
 **Fundamento:** 3 intentos absorben un error puntual (un 503 aislado) sin que
-un objeto caído demore la corrida más de ~1,5 s de espera. El backoff
-exponencial con jitter es la estrategia que recomienda Google para GCS y
-evita que varios workers reintenten sincronizados. 403 y 404 son permanentes:
-reintentarlos no cambia el resultado. A mitad de la lectura ya pueden haberse
+un objeto caído demore la corrida más de 1,8 s de espera (1,5 s ± 20%). El
+backoff exponencial con jitter es la estrategia que recomienda Google para
+GCS y evita que varios workers reintenten sincronizados. 408 (timeout de la
+request) y 429 (demasiadas requests) son transitorios por definición; el
+resto de los 4xx son permanentes: reintentarlos no cambia el resultado. A mitad de la lectura ya pueden haberse
 impreso matches del objeto; releerlo desde el inicio los duplicaría en
 `stdout`.
 

@@ -77,14 +77,14 @@ Cada término se usa siempre con este significado, en este documento, en
 | **Objeto corrupto** | Objeto comprimido cuyo contenido gzip es inválido (cabecera o CRC). El término no aplica a objetos no comprimidos. | dañado |
 | **Objeto salteado** | Objeto que deliberadamente no se busca por una regla (hoy: objeto binario). **No** es un error. | ignorado, omitido |
 | **Línea salteada** | Línea que supera el tamaño máximo de línea y no se busca. **No** es un error. | línea truncada |
-| **Objeto fallido** | Objeto que no se pudo leer completo: sin permiso, no encontrado, objeto corrupto, o fallo de red tras agotar los reintentos. **Es** un error. | ilegible, no accesible, inaccesible |
+| **Objeto fallido** | Objeto que no se pudo leer completo: sin permiso, no encontrado, objeto corrupto, otro error permanente al abrirlo, fallo de red tras agotar los reintentos, o lectura interrumpida a mitad. **Es** un error. | ilegible, no accesible, inaccesible |
 | **Objeto cortado** | Objeto cuya lectura se detuvo al alcanzar el guardrail de tamaño por objeto. **Es** un error. | — |
 | **Guardrail** | Límite de costo que impide o corta la lectura: cantidad de objetos, tamaño por objeto, tamaño acumulado de la corrida. | tope, límite (sueltos) |
 | **Escaneo incompleto** | Corrida que terminó sin leer todos los objetos listados porque se alcanzó el guardrail acumulado. **Es** un error. | — |
 | **Aviso** | Mensaje por `stderr` con prefijo `gcsgrep: warning:` sobre una situación de la que la corrida se recupera y continúa. | warning (en prosa), advertencia |
 | **Mensaje de error** | Mensaje por `stderr` con prefijo `gcsgrep: error:` que acompaña el fin de la corrida por un error. | — |
 | **Error** | Toda situación que obliga a terminar con exit code 2: objeto fallido, objeto cortado, escaneo incompleto, guardrail de cantidad alcanzado, error de uso, o fallo de acceso a la ubicación. | falla (como sinónimo) |
-| **Error de uso** | Invocación inválida: flags incompatibles, argumentos faltantes, valores fuera de rango, patrón que no es una regex RE2 válida, ubicación sin `gs://`. | — |
+| **Error de uso** | Invocación inválida: flag desconocido, flags incompatibles, cantidad de argumentos incorrecta, valores no enteros o fuera de rango, patrón que no es una regex RE2 válida, ubicación sin `gs://`. | — |
 | **Progreso** | Indicador por `stderr` de objetos procesados sobre el total listado. | — |
 | **Credenciales ADC** | Credenciales de Application Default Credentials de quien invoca. | — |
 
@@ -188,12 +188,13 @@ Todos derivan del borrador original (FR-a a FR-g).
   más de 5 MiB de RSS por encima de procesar uno de 5 MiB), así que con
   concurrencia N el uso adicional es ≤ 5 × N MiB.
 - **NFR-c — Comportamiento ante fallos de red.** Un error transitorio de red
-  (timeout, conexión reseteada, 5xx) al listar el prefijo o al abrir un objeto
+  (timeout, conexión reseteada, HTTP 408, 429 o 5xx) al listar el prefijo o al abrir un objeto
   se reintenta hasta **3 intentos en total**, con backoff exponencial entre
   intentos (500ms antes del 2º, 1s antes del 3º, ± 20% de jitter). Si los 3
   intentos fallan al abrir, el objeto queda como objeto fallido (FR-f) y la
   corrida continúa; si fallan al listar, la corrida termina con error.
-  Errores permanentes (403 Forbidden, 404 Not Found) no se reintentan. Un
+  Errores permanentes (HTTP 4xx distinto de 408 y 429, como 403 Forbidden o
+  404 Not Found) no se reintentan. Un
   error a mitad de la lectura de un objeto no se reintenta: el objeto queda
   como objeto fallido y las líneas ya impresas se mantienen, sin duplicarse.
 
