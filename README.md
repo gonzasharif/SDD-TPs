@@ -24,20 +24,27 @@ bajarlos primero a disco.
 ```bash
 cd gcsgrep
 go build -o gcsgrep ./cmd/gcsgrep
-go test ./...   # tests unitarios
 go vet ./...     # chequeo estático
+go test ./...    # tests unitarios (incluye los chequeos de VC-1.2 y VC-15.2)
 ```
 
 ```bash
-./gcsgrep [-i] [--max N] "PATRÓN" gs://bucket/prefijo
+./gcsgrep [-i] [-n] [--max N] PATRÓN gs://bucket/prefijo
 ```
 
-Necesita Application Default Credentials (`gcloud auth application-default
-login`) — no acepta ninguna otra forma de autenticación (BR-2). No escribe
-nunca en GCS (BR-1).
+El patrón es una expresión regular RE2. Necesita Application Default
+Credentials (`gcloud auth application-default login`) — no acepta ninguna
+otra forma de autenticación. No escribe nunca en GCS (BR-1).
+
+Los VCs contra GCS real son tests de Go con build tag `integration` (ver
+`gcsgrep/integration/doc.go`); los datos que usan se crean con
+`gcsgrep/testdata/setup-testdata.sh`.
 
 ### Estado
 
-Iteración 1 implementada y verificada (ver `gcsgrep-cobertura-vc.md`), con
-dos VCs (VC-9/VC-16) marcados con una salvedad explícita: se probaron con
-un cliente GCS fake, no contra un objeto real con ACL restringida.
+La spec se corrigió después de la revisión de la cátedra (FRs atómicos,
+casos de falla nuevos, VCs con observables literales, NFRs congelados) y la
+Iteración 1 se re-verificó contra ella: 40 de sus 41 VCs pasan, 30 de ellos
+contra GCS real. Falta medir VC-22 (memoria), que requiere Linux o macOS.
+Detalle en `gcsgrep-cobertura-vc.md`, sección "Iteración 1 — re-verificación
+contra la spec corregida".

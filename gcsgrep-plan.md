@@ -126,30 +126,30 @@ detectable por un script cuando la invocación o la ubicación no sirven.
 
 **Criterios de éxito** (41 VCs)
 
-- [ ] VC-1.1, VC-1.2, VC-1.3, VC-1.4 — búsqueda, sin escritura a disco, RE2,
+- [x] VC-1.1, VC-1.2, VC-1.3, VC-1.4 — búsqueda, sin escritura a disco, RE2,
       patrón inválido
-- [ ] VC-2.1, VC-2.2 — bucket completo
-- [ ] VC-3.1, VC-3.3 — formato en texto plano, sin bytes ANSI
-- [ ] VC-4.1, VC-4.2 — `-i`
-- [ ] VC-8.1, VC-8.2, VC-8.3 — exit codes 0/1/2
-- [ ] VC-9.1, VC-9.3, VC-9.4 — objeto fallido al abrirlo (403, 404, CSEK)
-- [ ] VC-11 — objetos binarios se saltean
-- [ ] VC-15.1, VC-15.2 — solo lectura
-- [ ] VC-16 — no se expone contenido fuera del acceso del usuario
-- [ ] VC-17.1, VC-17.2, VC-17.3 — guardrail de cantidad
-- [ ] VC-21.1 — throughput secuencial ≥ 0,5 objetos/seg
-- [ ] VC-21.3 — primer resultado en ≤ 2 segundos
+- [x] VC-2.1, VC-2.2 — bucket completo
+- [x] VC-3.1, VC-3.3 — formato en texto plano, sin bytes ANSI
+- [x] VC-4.1, VC-4.2 — `-i`
+- [x] VC-8.1, VC-8.2, VC-8.3 — exit codes 0/1/2
+- [x] VC-9.1, VC-9.3, VC-9.4 — objeto fallido al abrirlo (403, 404, CSEK)
+- [x] VC-11 — objetos binarios se saltean
+- [x] VC-15.1, VC-15.2 — solo lectura
+- [x] VC-16 — no se expone contenido fuera del acceso del usuario
+- [x] VC-17.1, VC-17.2, VC-17.3 — guardrail de cantidad
+- [x] VC-21.1 — throughput secuencial ≥ 0,5 objetos/seg
+- [x] VC-21.3 — primer resultado en ≤ 2 segundos
 - [ ] VC-22 — memoria constante (en esta iteración se corre **sin**
       `--max-object-size 0 --max-total-size 0`: esos flags todavía no
       existen y no hay guardrails de tamaño que desactivar)
-- [ ] VC-24 — líneas de más de 1 MiB se saltean
-- [ ] VC-25.1, VC-25.2, VC-25.3, VC-25.4 — ubicación no usable
-- [ ] VC-26 — ubicación sin objetos
-- [ ] VC-27 — prefijo sin `/` final
-- [ ] VC-28.1 — orden en modo secuencial
-- [ ] VC-29 — `-n` sin efecto
-- [ ] VC-30.1, VC-30.2 — objeto de 0 bytes, última línea sin `\n`
-- [ ] VC-31.1, VC-31.2, VC-31.3, VC-31.4 — invocación inválida
+- [x] VC-24 — líneas de más de 1 MiB se saltean
+- [x] VC-25.1, VC-25.2, VC-25.3, VC-25.4 — ubicación no usable
+- [x] VC-26 — ubicación sin objetos
+- [x] VC-27 — prefijo sin `/` final
+- [x] VC-28.1 — orden en modo secuencial
+- [x] VC-29 — `-n` sin efecto
+- [x] VC-30.1, VC-30.2 — objeto de 0 bytes, última línea sin `\n`
+- [x] VC-31.1, VC-31.2, VC-31.3, VC-31.4 — invocación inválida
 
 **Demostrable así** (datos de la sección "Datos de prueba" de la spec):
 
