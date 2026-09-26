@@ -13,7 +13,6 @@ bajarlos primero a disco.
 
 | # | Archivo | Paso SDD |
 |---|---|---|
-| 0 | [`gcsgrep-borrador.md`](./gcsgrep-borrador.md) | Borrador original de la cátedra (punto de partida, sin modificar) |
 | 1 | [`gcsgrep-requirements.md`](./gcsgrep-requirements.md) | Base context refinado: requerimientos del dominio y glosario (lenguaje ubicuo) |
 | 2 | [`gcsgrep-design.md`](./gcsgrep-design.md) | Diseño: modelo de dominio, decisiones, arquitectura |
 | 3 | [`gcsgrep-spec.md`](./gcsgrep-spec.md) | Spec: FRs/BRs/NFRs en Dado/Cuando/Entonces, un VC por cada uno |

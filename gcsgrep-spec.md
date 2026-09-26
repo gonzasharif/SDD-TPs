@@ -483,8 +483,8 @@ tabla de puro camino feliz.
 
 ## Preguntas abiertas
 
-Ninguna. Las 10 preguntas abiertas del borrador original
-(`gcsgrep-borrador.md`) están resueltas en `gcsgrep-design.md`, y las que surgieron durante la atomización (mutua exclusión de `-l`/`-c`,
+Ninguna. Las 10 preguntas abiertas del borrador original (commit `c84efbc`)
+están resueltas en `gcsgrep-design.md`, y las que surgieron durante la atomización (mutua exclusión de `-l`/`-c`,
 tope de concurrencia, riesgo de falso negativo en líneas largas) quedaron
 resueltas en la revisión conversacional de este documento — no queda ningún
 "a definir" pendiente.

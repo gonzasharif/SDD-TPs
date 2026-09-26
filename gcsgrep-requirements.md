@@ -4,17 +4,19 @@
 > problema, para quién es y qué tiene que cumplir la herramienta, con el
 > vocabulario del dominio. No describe cómo se construye.
 >
-> - Punto de partida: [`gcsgrep-borrador.md`](./gcsgrep-borrador.md), el
->   borrador original de la cátedra, sin modificar.
+> Arrancó como el borrador deliberadamente subespecificado de la cátedra y se
+> refinó en este mismo archivo; la versión original queda en el historial de
+> git (commit `c84efbc`). En todo el repo, **"borrador original"** se refiere
+> a esa versión.
+>
 > - Cómo se construye y por qué (decisiones, modelo de dominio,
 >   arquitectura): [`gcsgrep-design.md`](./gcsgrep-design.md).
 > - Contrato verificable (FRs/BRs/NFRs con su VC):
 >   [`gcsgrep-spec.md`](./gcsgrep-spec.md).
 >
-> En todo el repo, **"borrador original"** es `gcsgrep-borrador.md` y
-> **"base context refinado"** es este documento. Las 10 preguntas abiertas del
-> borrador original están resueltas; cada decisión, con su fundamento, vive en
-> `gcsgrep-design.md`.
+> **"Base context refinado"** es este documento. Las 10 preguntas abiertas del
+> borrador original están resueltas; cada decisión, con su fundamento y las
+> alternativas descartadas, vive en `gcsgrep-design.md`.
 
 ## La idea
 
@@ -42,8 +44,9 @@ gente que no conoce la línea de comandos.
 
 ## Qué NO es
 
-- **No es un clon completo de `grep`.** Soporta literal y regex básica (estilo
-  RE2, sin backtracking), no PCRE ni la sintaxis completa de ningún lenguaje.
+- **No es un clon completo de `grep`.** El patrón es una expresión regular con
+  sintaxis RE2 (sin backtracking); no soporta PCRE (backreferences,
+  lookaround) ni la sintaxis BRE/ERE de POSIX.
 - **No es un gestor de GCS.** No copia, no mueve, no borra, no cambia permisos.
 - **Solo CLI.** No hay interfaz web, ni API, ni librería para importar (por ahora).
 - **Solo GCS en la v1.** S3 y Azure Blob quedan afuera, aunque el diseño no debería
@@ -64,7 +67,7 @@ Cada término se usa siempre con este significado, en este documento, en
 | **Prefijo** | Parte de la ubicación después del bucket. Filtra objetos por el comienzo de su nombre; en GCS no existen carpetas. | carpeta, directorio |
 | **Objeto** | Unidad de almacenamiento de GCS, identificada por su nombre dentro del bucket. | archivo |
 | **Nombre de objeto** | Nombre completo del objeto dentro del bucket, sin `gs://bucket/` (ej. `logs/a.log`). | ruta del objeto |
-| **Patrón** | Expresión que se busca en cada línea. | query, término |
+| **Patrón** | Expresión regular con sintaxis RE2 que se busca en cada línea. Un texto sin metacaracteres es un patrón válido que se busca literalmente; un metacarácter se busca literal escapándolo con `\` (ej. `1\.2`). | query, término |
 | **Línea** | Secuencia de bytes de un objeto terminada en `\n` o en el fin del objeto. | — |
 | **Match** | Línea de un objeto en la que el patrón aparece al menos una vez. | hit |
 | **Corrida** | Una invocación completa de `gcsgrep`, desde el parseo de argumentos hasta el exit code. | ejecución, búsqueda (como sustantivo) |
@@ -89,7 +92,7 @@ Cada término se usa siempre con este significado, en este documento, en
 
 Todos derivan del borrador original (FR-a a FR-g).
 
-- **FR-a** — El usuario pasa un patrón (literal o regex básica) y una ubicación
+- **FR-a** — El usuario pasa un patrón (regex RE2) y una ubicación
   `gs://bucket/prefijo`, y la herramienta busca el patrón línea por línea dentro
   del contenido de los objetos de texto bajo ese prefijo, leyendo por streaming
   (sin bajar el objeto completo a disco).
@@ -182,8 +185,8 @@ Todos derivan del borrador original (FR-a a FR-g).
     baja latencia.
 - **NFR-b — Memoria con objetos grandes.** El uso de memoria por objeto en
   proceso es constante respecto de su tamaño total: lectura por streaming en
-  chunks de 64 KiB, con un buffer de línea acotado a **1 MiB** por defecto
-  (configurable con `--max-line-size`). Una línea que exceda ese tamaño es una
+  chunks de 64 KiB, con un buffer de línea acotado a **1 MiB** (valor fijo en
+  v1). Una línea que exceda ese tamaño es una
   **línea salteada** (no se busca el patrón en ninguna porción de ella) y se
   emite un aviso una única vez por objeto afectado — no se trunca para
   matchear, porque un truncado partiría un match real que cayera justo en el
@@ -191,11 +194,14 @@ Todos derivan del borrador original (FR-a a FR-g).
   ≤ 5 MiB por objeto en procesamiento simultáneo, por lo que con concurrencia
   N el uso adicional escala como ~5×N MiB.
 - **NFR-c — Comportamiento ante fallos de red.** Un error transitorio de red
-  (timeout, conexión reseteada, 5xx) al leer un objeto se reintenta hasta
-  **3 intentos en total**, con backoff exponencial (500ms, 1s, 2s ± 20% de
-  jitter). Si los 3 intentos fallan, el objeto queda como objeto fallido
-  (FR-f) y la corrida continúa. Errores permanentes (403 Forbidden, 404 Not
-  Found) no se reintentan: el objeto queda como objeto fallido de inmediato.
+  (timeout, conexión reseteada, 5xx) al listar el prefijo o al abrir un objeto
+  se reintenta hasta **3 intentos en total**, con backoff exponencial entre
+  intentos (500ms antes del 2º, 1s antes del 3º, ± 20% de jitter). Si los 3
+  intentos fallan al abrir, el objeto queda como objeto fallido (FR-f) y la
+  corrida continúa; si fallan al listar, la corrida termina con error.
+  Errores permanentes (403 Forbidden, 404 Not Found) no se reintentan. Un
+  error a mitad de la lectura de un objeto no se reintenta: el objeto queda
+  como objeto fallido y las líneas ya impresas se mantienen, sin duplicarse.
 
 ## Concurrencia
 
@@ -206,9 +212,11 @@ Todos derivan del borrador original (FR-a a FR-g).
   (exit code 2) antes de arrancar la corrida, para que el flag no se use como
   forma implícita de saltear los guardrails de costo/carga sobre la API de
   GCS.
-- En modo concurrente, el orden de salida **no** coincide necesariamente con el
-  orden de listado de objetos — cada objeto imprime sus resultados cuando
-  termina de procesarse. Esto es comportamiento esperado, no un bug.
+- En modo secuencial, los resultados salen en el orden del listado de
+  objetos. En modo concurrente, el orden entre objetos **no** coincide
+  necesariamente con el orden de listado — cada objeto imprime sus resultados
+  cuando termina de procesarse —, pero las líneas de un mismo objeto salen
+  juntas y en orden ascendente. Esto es comportamiento esperado, no un bug.
 
 Cómo se implementa (modelo de ejecución, contadores compartidos): ver
 `gcsgrep-design.md`.
@@ -217,12 +225,10 @@ Cómo se implementa (modelo de ejecución, contadores compartidos): ver
 
 El pipeline de documentos del proyecto:
 
-1. [`gcsgrep-borrador.md`](./gcsgrep-borrador.md) — punto de partida (no se
-   modifica).
-2. **Este documento** — qué hay que resolver y con qué vocabulario.
-3. [`gcsgrep-design.md`](./gcsgrep-design.md) — decisiones, modelo de dominio y
+1. **Este documento** — qué hay que resolver y con qué vocabulario.
+2. [`gcsgrep-design.md`](./gcsgrep-design.md) — decisiones, modelo de dominio y
    arquitectura.
-4. [`gcsgrep-spec.md`](./gcsgrep-spec.md) — contrato verificable.
-5. [`gcsgrep-plan.md`](./gcsgrep-plan.md) — iteraciones.
-6. [`gcsgrep-cobertura-vc.md`](./gcsgrep-cobertura-vc.md) — evidencia de
+3. [`gcsgrep-spec.md`](./gcsgrep-spec.md) — contrato verificable.
+4. [`gcsgrep-plan.md`](./gcsgrep-plan.md) — iteraciones.
+5. [`gcsgrep-cobertura-vc.md`](./gcsgrep-cobertura-vc.md) — evidencia de
    verificación.
