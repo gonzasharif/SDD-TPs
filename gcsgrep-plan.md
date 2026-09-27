@@ -139,7 +139,7 @@ detectable por un script cuando la invocación o la ubicación no sirven.
 - [x] VC-17.1, VC-17.2, VC-17.3 — guardrail de cantidad
 - [x] VC-21.1 — throughput secuencial ≥ 0,5 objetos/seg
 - [x] VC-21.3 — primer resultado en ≤ 2 segundos
-- [ ] VC-22 — memoria constante (en esta iteración se corre **sin**
+- [x] VC-22 — memoria constante (en esta iteración se corre **sin**
       `--max-object-size 0 --max-total-size 0`: esos flags todavía no
       existen y no hay guardrails de tamaño que desactivar)
 - [x] VC-24 — líneas de más de 1 MiB se saltean

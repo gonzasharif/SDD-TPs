@@ -44,7 +44,7 @@ Los VCs contra GCS real son tests de Go con build tag `integration` (ver
 
 La spec se corrigió después de la revisión de la cátedra (FRs atómicos,
 casos de falla nuevos, VCs con observables literales, NFRs congelados) y la
-Iteración 1 se re-verificó contra ella: 40 de sus 41 VCs pasan, 30 de ellos
-contra GCS real. Falta medir VC-22 (memoria), que requiere Linux o macOS.
+Iteración 1 se re-verificó contra ella: pasan sus 41 VCs, 30 de ellos contra
+GCS real y 3 como mediciones de rendimiento y memoria.
 Detalle en `gcsgrep-cobertura-vc.md`, sección "Iteración 1 — re-verificación
 contra la spec corregida".

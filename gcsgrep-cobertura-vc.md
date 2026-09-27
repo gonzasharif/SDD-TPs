@@ -159,8 +159,8 @@ BUCKET=<test-bucket>
 | Ejercitados contra GCS real (`gcsgrep/integration`) | 30 |
 | Ejercitados con tests unitarios / chequeo estático | 8 |
 | Mediciones (NFR-1, NFR-2) | 3 |
-| VCs pasando | 40 |
-| Pendientes | 1 (VC-22: requiere Linux o macOS, ver nota 4) |
+| VCs pasando | 41 |
+| Pendientes | 0 |
 
 ### Cobertura, una por una
 
@@ -222,7 +222,7 @@ VC-1.4, VC-17.1 y VC-25.1, que la corrida real no puede contar.
 |---|---|---|---|
 | VC-21.1 | NFR-1 throughput secuencial ≥ 0,5 obj/s | 3 corridas sobre `perf/` (500 × 1 MiB): 429,1 s, 477,9 s, 416,1 s → mediana 429,1 s = **1,17 objetos/seg** | ✅ |
 | VC-21.3 | NFR-1 primer resultado ≤ 2 s | 1,741 s, 1,733 s, 1,690 s → mediana **1,733 s** | ✅ |
-| VC-22 | NFR-2 memoria constante (≤ 5 MiB de diferencia) | pendiente: `getrusage` no existe en Windows; hay que correrlo en Linux o macOS | ⏳ |
+| VC-22 | NFR-2 memoria constante (≤ 5 MiB de diferencia) | Corrido en Linux (WSL). RSS máximo de `mem/small.log` (5 MiB): 34,2 / 34,7 / 34,2 MiB; de `mem/large.log` (500 MiB, 100 veces más grande): 37,0 / 37,7 / 37,2 MiB → medianas 34,2 y 37,2 MiB, **diferencia 3,0 MiB** | ✅ |
 
 VC-21.2 (throughput con `--concurrency 8`) es de la Iteración 3.
 
@@ -249,9 +249,13 @@ VC-21.2 (throughput con `--concurrency 8`) es de la Iteración 3.
      final: rompía NFR-2 con muchos matches, demoraba el primer resultado
      (VC-21.3) y se perdían si el objeto fallaba a mitad (decisión de diseño
      11). Ahora cada match se imprime al encontrarlo.
-4. **VC-22 está pendiente de medición.** El test existe
-   (`TestVC22_ConstantMemory`) pero lee el RSS máximo con `getrusage`, que
-   no existe en Windows, donde se corrió el resto.
+4. **VC-22 se midió en Linux (WSL)** y no en Windows, donde se corrió el
+   resto: el test lee el RSS máximo con `getrusage`, que Windows no tiene.
+   En WSL las ADC de Windows se usaron con
+   `GOOGLE_APPLICATION_CREDENTIALS` apuntando a su archivo. Con un objeto
+   100 veces más grande la memoria pico creció 3,0 MiB (umbral ≤ 5 MiB); la
+   verificación anterior había observado 0,7 MiB con una relación de tamaños
+   de 40 veces.
 5. **El throughput secuencial mejoró respecto de la medición anterior**
    (1,17 contra 0,59 objetos/seg) sin cambios de código que lo expliquen: la
    red desde donde se midió es distinta. El umbral (≥ 0,5) se cumple en

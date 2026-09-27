@@ -127,9 +127,11 @@ func TestVC22_ConstantMemory(t *testing.T) {
 		var rss []int64
 		for i := 0; i < repetitions; i++ {
 			cmd := exec.Command(bin, "needle", loc(object))
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
 			err := cmd.Run()
 			if code := cmd.ProcessState.ExitCode(); code != 1 {
-				t.Fatalf("%s run %d: exit %d (%v), want 1", object, i+1, code, err)
+				t.Fatalf("%s run %d: exit %d (%v), want 1\n--- stderr\n%s", object, i+1, code, err, stderr.String())
 			}
 			b, ok := maxRSSBytes(cmd.ProcessState)
 			if !ok {
