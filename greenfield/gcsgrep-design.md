@@ -1,13 +1,13 @@
 # gcsgrep — diseño
 
-> **Estado: vigente.** Complementa [`gcsgrep-requirements.md`](./gcsgrep-requirements.md)
+> **Estado: vigente.** Complementa [`gcsgrep-requirements.md`](gcsgrep-requirements.md)
 > (el *qué*, en el lenguaje del dominio) con el *cómo* y el *por qué*:
 > decisiones, modelo de dominio y arquitectura. Usa el lenguaje ubicuo
 > definido en el glosario de `gcsgrep-requirements.md`.
 >
-> La spec ([`gcsgrep-spec.md`](./gcsgrep-spec.md)) no depende de este
+> La spec ([`gcsgrep-spec.md`](gcsgrep-spec.md)) no depende de este
 > documento para ser verificable: define comportamiento observable. El plan
-> ([`gcsgrep-plan.md`](./gcsgrep-plan.md)) y el código (`gcsgrep/`) sí se
+> ([`gcsgrep-plan.md`](gcsgrep-plan.md)) y el código (`gcsgrep`) sí se
 > apoyan en él.
 
 ## Contexto delimitado

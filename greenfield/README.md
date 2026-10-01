@@ -2,7 +2,7 @@
 
 Trabajos prácticos del curso de Spec-Driven Development. Por ahora, uno solo:
 `gcsgrep` (Lección 1) — la consigna completa está en
-[`enunciado.md`](./enunciado.md).
+[`enunciado.md`](enunciado.md).
 
 ## `gcsgrep`
 
@@ -13,11 +13,11 @@ bajarlos primero a disco.
 
 | # | Archivo | Paso SDD |
 |---|---|---|
-| 1 | [`gcsgrep-requirements.md`](./gcsgrep-requirements.md) | Base context refinado: requerimientos del dominio y glosario (lenguaje ubicuo) |
-| 2 | [`gcsgrep-design.md`](./gcsgrep-design.md) | Diseño: modelo de dominio, decisiones, arquitectura |
-| 3 | [`gcsgrep-spec.md`](./gcsgrep-spec.md) | Spec: FRs/BRs/NFRs en Dado/Cuando/Entonces, un VC por cada uno |
-| 4 | [`gcsgrep-plan.md`](./gcsgrep-plan.md) | Plan de iteraciones (alcance diferido vive acá, no en la spec) |
-| 5 | [`gcsgrep-cobertura-vc.md`](./gcsgrep-cobertura-vc.md) | Evidencia de verificación, acumulada por iteración |
+| 1 | [`gcsgrep-requirements.md`](gcsgrep-requirements.md) | Base context refinado: requerimientos del dominio y glosario (lenguaje ubicuo) |
+| 2 | [`gcsgrep-design.md`](gcsgrep-design.md) | Diseño: modelo de dominio, decisiones, arquitectura |
+| 3 | [`gcsgrep-spec.md`](gcsgrep-spec.md) | Spec: FRs/BRs/NFRs en Dado/Cuando/Entonces, un VC por cada uno |
+| 4 | [`gcsgrep-plan.md`](gcsgrep-plan.md) | Plan de iteraciones (alcance diferido vive acá, no en la spec) |
+| 5 | [`gcsgrep-cobertura-vc.md`](gcsgrep-cobertura-vc.md) | Evidencia de verificación, acumulada por iteración |
 
 ### Correrlo
 

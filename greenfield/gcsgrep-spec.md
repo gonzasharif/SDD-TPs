@@ -2,9 +2,9 @@
 
 > **Estado: revisada.** Sin preguntas abiertas (ver cierre del documento).
 > Deriva del base context refinado,
-> [`gcsgrep-requirements.md`](./gcsgrep-requirements.md) (qué y con qué
+> [`gcsgrep-requirements.md`](gcsgrep-requirements.md) (qué y con qué
 > vocabulario), con las decisiones de
-> [`gcsgrep-design.md`](./gcsgrep-design.md) (cómo y por qué).
+> [`gcsgrep-design.md`](gcsgrep-design.md) (cómo y por qué).
 > Este documento es el contrato verificable: cada FR está
 > en formato Dado/Cuando/Entonces, cada BR tiene fundamento, y cada FR, BR y
 > NFR tiene un VC (criterio de verificación) concreto. El alcance por iteración
@@ -163,7 +163,7 @@ Verificar que el archivo contiene exactamente la línea
 - **Entonces** lo lee por streaming y nunca escribe el contenido del objeto
   (ni completo ni en partes) a un archivo en disco.
 
-**VC-1.2:** Búsqueda estática en el código de `gcsgrep/`, excluyendo los
+**VC-1.2:** Búsqueda estática en el código de `gcsgrep`, excluyendo los
 archivos `_test.go`: cero apariciones de `os.Create`, `os.CreateTemp`,
 `os.WriteFile` y `os.OpenFile`, es decir, ningún camino de código puede
 escribir el contenido de un objeto a disco.
@@ -812,7 +812,7 @@ falla o mal uso.
   credenciales de `<sa-viewer>` (solo lectura) y con las ADC del usuario.
   Verificar que, para cada comando, `stdout` es byte a byte idéntico y el
   exit code es el mismo con ambas credenciales.
-- **VC-15.2:** Búsqueda estática en el código de `gcsgrep/`, excluyendo los
+- **VC-15.2:** Búsqueda estática en el código de `gcsgrep`, excluyendo los
   archivos `_test.go`: la interfaz `gcsclient.Client` declara solo `List` y
   `Open`, y hay cero apariciones de `NewWriter`, `Delete`, `Update`, `Copier`,
   `Compose` y `ACL(`.
@@ -1119,4 +1119,4 @@ resueltas en este documento. Los umbrales de los NFRs están congelados.
 
 ## Qué sigue
 
-El plan de iteraciones está en [`gcsgrep-plan.md`](./gcsgrep-plan.md).
+El plan de iteraciones está en [`gcsgrep-plan.md`](gcsgrep-plan.md).

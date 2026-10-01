@@ -16,7 +16,7 @@ objeto matcheó y dónde.
 
 ## Lo que te damos
 
-[`gcsgrep-requirements.md`](./gcsgrep-requirements.md) — un borrador **deliberadamente
+[`gcsgrep-requirements.md`](gcsgrep-requirements.md) — un borrador **deliberadamente
 subespecificado**: FRs flojos, BRs candidatos, NFRs en blanco y una lista de preguntas
 abiertas al final.
 

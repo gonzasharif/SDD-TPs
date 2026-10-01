@@ -11,7 +11,7 @@
 > `us-central1` (nombres reales deliberadamente no versionados acá — ver
 > `gcsgrep/testenv.local.md`, gitignoreado; pedíselo a quien armó el
 > entorno si no lo tenés). ADC vía `gcloud auth application-default login`.
-> Implementación en Go, código en `gcsgrep/`.
+> Implementación en Go, código en `gcsgrep`.
 
 ## Iteración 1
 
@@ -140,16 +140,16 @@ BUCKET=<test-bucket>
 > la spec corregida; no reemplaza a la anterior.
 >
 > - **Datos:** los de la sección "Datos de prueba" de la spec, creados con
->   `gcsgrep/testdata/setup-testdata.sh` en el bucket de prueba de siempre
->   (`us-central1`). Los objetos de la verificación anterior se movieron a
->   `legacy-iter1/` (nada se borró).
+> `gcsgrep/testdata/setup-testdata.sh` en el bucket de prueba de siempre
+> (`us-central1`). Los objetos de la verificación anterior se movieron a
+> `legacy-iter1/` (nada se borró).
 > - **Credenciales:** ADC del usuario y las service accounts `<sa-viewer>`,
 >   `<sa-restringida>` (IAM Condition que excluye `acl/denied.log`) y
 >   `<sa-sin-rol>`, usadas vía ADC impersonadas (sin claves).
 > - **Herramientas:** los VCs contra GCS real son tests de Go en
->   `gcsgrep/integration` (build tag `integration`); cada corrida queda
->   registrada en la salida de `go test -v` con su stdout, stderr y exit code.
->   Los VCs sin GCS real son tests unitarios de `go test ./...`.
+> `gcsgrep/integration` (build tag `integration`); cada corrida queda
+> registrada en la salida de `go test -v` con su stdout, stderr y exit code.
+> Los VCs sin GCS real son tests unitarios de `go test ./...`.
 
 ### Resumen
 

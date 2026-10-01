@@ -1,6 +1,6 @@
 # gcsgrep — Plan de iteraciones
 
-> Deriva de [`gcsgrep-spec.md`](./gcsgrep-spec.md). La spec define **qué**
+> Deriva de [`gcsgrep-spec.md`](gcsgrep-spec.md). La spec define **qué**
 > tiene que hacer `gcsgrep` en su versión completa (v1); este documento
 > define **en qué orden** se construye y **qué queda deliberadamente afuera**
 > de cada iteración, y por qué. El alcance diferido vive acá — la spec no
@@ -12,7 +12,7 @@
 
 ## Dónde vive el código
 
-La implementación está en el subdirectorio `gcsgrep/` de este repo, en Go
+La implementación está en el subdirectorio `gcsgrep` de este repo, en Go
 (módulo `gcsgrep`). Estructura: `cmd/gcsgrep/main.go` es el entry point;
 `internal/{cli,scanner,reader,match,gcsclient,output}` son los módulos
 descritos en la sección "Arquitectura" de `gcsgrep-design.md`.

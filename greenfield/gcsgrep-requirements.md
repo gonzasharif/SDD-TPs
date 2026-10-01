@@ -10,9 +10,9 @@
 > a esa versión.
 >
 > - Cómo se construye y por qué (decisiones, modelo de dominio,
->   arquitectura): [`gcsgrep-design.md`](./gcsgrep-design.md).
+> arquitectura): [`gcsgrep-design.md`](gcsgrep-design.md).
 > - Contrato verificable (FRs/BRs/NFRs con su VC):
->   [`gcsgrep-spec.md`](./gcsgrep-spec.md).
+> [`gcsgrep-spec.md`](gcsgrep-spec.md).
 >
 > **"Base context refinado"** es este documento. Las 10 preguntas abiertas del
 > borrador original están resueltas; cada decisión, con su fundamento y las
@@ -221,9 +221,9 @@ Cómo se implementa (modelo de ejecución, contadores compartidos): ver
 El pipeline de documentos del proyecto:
 
 1. **Este documento** — qué hay que resolver y con qué vocabulario.
-2. [`gcsgrep-design.md`](./gcsgrep-design.md) — decisiones, modelo de dominio y
+2. [`gcsgrep-design.md`](gcsgrep-design.md) — decisiones, modelo de dominio y
    arquitectura.
-3. [`gcsgrep-spec.md`](./gcsgrep-spec.md) — contrato verificable.
-4. [`gcsgrep-plan.md`](./gcsgrep-plan.md) — iteraciones.
-5. [`gcsgrep-cobertura-vc.md`](./gcsgrep-cobertura-vc.md) — evidencia de
+3. [`gcsgrep-spec.md`](gcsgrep-spec.md) — contrato verificable.
+4. [`gcsgrep-plan.md`](gcsgrep-plan.md) — iteraciones.
+5. [`gcsgrep-cobertura-vc.md`](gcsgrep-cobertura-vc.md) — evidencia de
    verificación.
