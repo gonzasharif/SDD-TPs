@@ -157,6 +157,12 @@ Hallazgo contraintuitivo: **no hay ningún `#ifdef __linux__` en el código** (v
 | Uso en el camino de spawn, **en el hijo** | `spawn.c:504` (`#if defined(HAVE_SYSTEMD) && defined(ENABLE_CGROUPS)`) |
 | Otros usos | `server.c:223`, `client.c:283`, `environ.c:272` |
 
+Hay un **segundo precedente**, más cercano a una feature con código propio: `ENABLE_SIXEL`
+(`configure.ac:549-552`, `AC_DEFINE` + `AM_CONDITIONAL`). Agrega **fuentes propias** con
+`if ENABLE_SIXEL … dist_tmux_SOURCES += image.c image-sixel.c` (`Makefile.am:252-255`) y se usa con
+`#ifdef ENABLE_SIXEL` en `format.c`, `input.c`, `screen-write.c` y `screen-redraw.c`. O sea: `tmux`
+**sí** usa `#ifdef` para features opcionales; lo que no usa es `#ifdef` por plataforma.
+
 El `spawn.c:504` es especialmente relevante: ya hay código opcional que corre **en el hijo,
 justo después de `fdforkpty`**.
 
