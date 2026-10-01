@@ -1,6 +1,5 @@
 /example/
-/gcsgrep/testenv.local.md
-/gcsgrep/gcsgrep
-
+/greenfield/gcsgrep/testenv.local.md
+/greenfield/gcsgrep/gcsgrep
 
 .idea
