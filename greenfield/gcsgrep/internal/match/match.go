@@ -30,3 +30,21 @@ func New(pattern string, ignoreCase bool) (*Matcher, error) {
 func (m *Matcher) MatchString(line string) bool {
 	return m.re.MatchString(line)
 }
+
+// Span is the byte range [Start, End) of one match inside a line.
+type Span struct {
+	Start, End int
+}
+
+// Spans returns every non-overlapping, non-empty match of the pattern in
+// line, in order (FR-3.2 highlights each of them). An empty match has
+// nothing to highlight, so it is left out.
+func (m *Matcher) Spans(line string) []Span {
+	var spans []Span
+	for _, loc := range m.re.FindAllStringIndex(line, -1) {
+		if loc[1] > loc[0] {
+			spans = append(spans, Span{Start: loc[0], End: loc[1]})
+		}
+	}
+	return spans
+}

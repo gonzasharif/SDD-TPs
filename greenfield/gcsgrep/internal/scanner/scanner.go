@@ -97,10 +97,12 @@ func Run(ctx context.Context, client gcsclient.Client, cfg Config, m *match.Matc
 	budget := reader.NewBudget(cfg.MaxTotalSize)
 	matchFound := false
 	anyError := false
-	for _, obj := range objects {
+	defer w.EndProgress() // FR-10.1
+	for i, obj := range objects {
 		res := scanObject(ctx, client, cfg, budget, obj.Name, m, w)
 		matchFound = matchFound || res.matched
 		anyError = anyError || res.failed
+		w.Progress(i+1, len(objects)) // FR-10
 		if res.scanIncomplete {
 			w.Error("total size limit of %d bytes reached, scan incomplete", cfg.MaxTotalSize) // BR-5
 			anyError = true
@@ -147,7 +149,13 @@ func scanObject(ctx context.Context, client gcsclient.Client, cfg Config, budget
 	var emit func(reader.LineMatch)
 	switch cfg.Mode {
 	case ModeLines:
-		emit = func(lm reader.LineMatch) { w.Match(name, lm.LineNum, lm.Text) }
+		emit = func(lm reader.LineMatch) {
+			var spans []match.Span
+			if w.Color() {
+				spans = m.Spans(lm.Text) // FR-3.2
+			}
+			w.Match(name, lm.LineNum, lm.Text, spans)
+		}
 	case ModeFilesWithMatches:
 		opts.StopAtFirstMatch = true // FR-5
 	}

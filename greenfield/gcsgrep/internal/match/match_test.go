@@ -41,3 +41,24 @@ func TestNew_InvalidRegex(t *testing.T) {
 		t.Errorf("an invalid regex pattern should fail to compile")
 	}
 }
+
+// FR-3.2: every non-overlapping match is reported, empty ones are not.
+func TestSpans(t *testing.T) {
+	m, err := New("a+", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := m.Spans("baaab a")
+	want := []Span{{1, 4}, {6, 7}}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("Spans = %v, want %v", got, want)
+	}
+
+	empty, err := New("x*", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := empty.Spans("abc"); len(got) != 0 {
+		t.Errorf("Spans of an empty match = %v, want none", got)
+	}
+}

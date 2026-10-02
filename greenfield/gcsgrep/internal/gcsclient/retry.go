@@ -20,12 +20,15 @@ type RetryPolicy struct {
 	Jitter float64
 }
 
-// DefaultRetryPolicy is exactly NFR-3: 3 attempts, waiting 500 ms before the
-// 2nd and 1 s before the 3rd, each ±20%.
+// DefaultRetryPolicy is NFR-3: 3 attempts, waiting 500 ms before the 2nd and
+// 1 s before the 3rd, each varying by at most ±20%. The jitter is 15%, inside
+// that range on purpose: the time between two attempts is the wait plus the
+// scheduler's and the call's own delay, which would push a wait drawn near
+// +20% past the 1.2 s upper bound that VC-23.1 measures.
 var DefaultRetryPolicy = RetryPolicy{
 	Attempts: 3,
 	Delays:   []time.Duration{500 * time.Millisecond, time.Second},
-	Jitter:   0.2,
+	Jitter:   0.15,
 }
 
 // retrying decorates a Client with NFR-3's retries. Only List and Open are

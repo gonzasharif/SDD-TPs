@@ -9,8 +9,10 @@ import (
 
 	"gcsgrep/internal/app"
 	"gcsgrep/internal/gcsclient"
+	"gcsgrep/internal/tty"
 )
 
 func main() {
-	os.Exit(app.Run(context.Background(), os.Args[1:], os.Stdout, os.Stderr, gcsclient.New))
+	term := app.Terminals{Stdout: tty.IsTerminal(os.Stdout), Stderr: tty.IsTerminal(os.Stderr)}
+	os.Exit(app.RunWithTerminals(context.Background(), os.Args[1:], os.Stdout, os.Stderr, term, gcsclient.New))
 }

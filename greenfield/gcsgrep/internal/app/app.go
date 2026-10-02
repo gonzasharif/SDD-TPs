@@ -19,10 +19,27 @@ import (
 // has been fully validated; production passes gcsclient.New.
 type ClientFactory func(ctx context.Context) (gcsclient.Client, error)
 
-// Run executes one gcsgrep run over argv (os.Args[1:]) and returns the
-// process exit code (FR-8).
+// Terminals says which of the output streams are terminals (TTY).
+type Terminals struct {
+	Stdout bool
+	Stderr bool
+}
+
+// Run is RunWithTerminals for streams that are not terminals.
 func Run(ctx context.Context, argv []string, stdout, stderr io.Writer, newClient ClientFactory) int {
-	w := output.New(stdout, stderr)
+	return RunWithTerminals(ctx, argv, stdout, stderr, Terminals{}, newClient)
+}
+
+// RunWithTerminals executes one gcsgrep run over argv (os.Args[1:]) and
+// returns the process exit code (FR-8). Color depends on stdout being a
+// terminal (FR-3.2, FR-3.3) and the progress style on stderr being one
+// (FR-10.1, FR-10.2).
+func RunWithTerminals(ctx context.Context, argv []string, stdout, stderr io.Writer, term Terminals, newClient ClientFactory) int {
+	w := output.NewWithOptions(stdout, stderr, output.Options{
+		Color:          term.Stdout,
+		Progress:       true,
+		StderrTerminal: term.Stderr,
+	})
 
 	args, err := cli.Parse(argv)
 	if err != nil {

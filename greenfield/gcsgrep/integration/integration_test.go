@@ -5,6 +5,7 @@ package integration
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -20,11 +21,32 @@ import (
 var (
 	bucket   = os.Getenv("GCSGREP_TEST_BUCKET")
 	credsDir = os.Getenv("GCSGREP_TEST_CREDS")
+	// userADC is the GOOGLE_APPLICATION_CREDENTIALS the tests were started
+	// with (empty if unset: the default ADC file is used). It is what "the
+	// user's own ADC" means in useUserADC.
+	userADC = os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
 )
 
+// result is the outcome of one run. stderr leaves out the progress lines
+// (FR-10), which are in progress, so the checks on avisos and errors stay
+// exact.
 type result struct {
 	code           int
 	stdout, stderr string
+	progress       string
+}
+
+// newResult builds a result, moving the progress lines out of stderr.
+func newResult(code int, stdout, stderr string) result {
+	var rest, progress strings.Builder
+	for _, l := range strings.SplitAfter(stderr, "\n") {
+		if strings.HasPrefix(l, "gcsgrep: progress: ") {
+			progress.WriteString(l)
+		} else {
+			rest.WriteString(l)
+		}
+	}
+	return result{code, stdout, rest.String(), progress.String()}
 }
 
 // loc is gs://<bucket>/<prefix>.
@@ -40,8 +62,8 @@ func run(t *testing.T, args ...string) result {
 	}
 	var stdout, stderr bytes.Buffer
 	code := app.Run(context.Background(), args, &stdout, &stderr, gcsclient.New)
-	r := result{code, stdout.String(), stderr.String()}
-	t.Logf("gcsgrep %s\n--- exit %d\n--- stdout\n%s--- stderr\n%s", strings.Join(args, " "), r.code, r.stdout, r.stderr)
+	r := newResult(code, stdout.String(), stderr.String())
+	t.Logf("gcsgrep %s\n--- exit %d\n--- stdout\n%s--- stderr\n%s--- progress\n%s", strings.Join(args, " "), r.code, r.stdout, r.stderr, r.progress)
 	return r
 }
 
@@ -59,10 +81,11 @@ func useCreds(t *testing.T, name string) {
 	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", path)
 }
 
-// useUserADC makes the next runs use the invoking user's own ADC.
+// useUserADC makes the next runs use the invoking user's own ADC: the ones
+// the tests were started with, not those of a test service account.
 func useUserADC(t *testing.T) {
 	t.Helper()
-	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", userADC)
 }
 
 func expect(t *testing.T, r result, code int, stdout, stderr string) {
@@ -86,6 +109,15 @@ func expectSingleLinePrefix(t *testing.T, name, s, prefix string) {
 	}
 }
 
+// expectNoProgress checks that the run printed no progress line (FR-10: a run
+// that processes no object shows none).
+func expectNoProgress(t *testing.T, r result) {
+	t.Helper()
+	if r.progress != "" {
+		t.Errorf("progress = %q, want none", r.progress)
+	}
+}
+
 func lines(format string, from, to int) string {
 	var b strings.Builder
 	for i := from; i <= to; i++ {
@@ -104,6 +136,10 @@ func countObjects(t *testing.T) int {
 	}
 	out, err := exec.Command(gcloud, "storage", "ls", "gs://"+bucket+"/**").Output()
 	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			t.Fatalf("gcloud storage ls: %v\n%s", err, exitErr.Stderr)
+		}
 		t.Fatalf("gcloud storage ls: %v", err)
 	}
 	n := 0
@@ -219,8 +255,10 @@ func TestVC16_NoAccessAmplification(t *testing.T) {
 }
 
 func TestVC17_1_ObjectCountGuardrail(t *testing.T) {
-	expect(t, run(t, "--max", "5", "timeout", loc("max/")), 2, "",
+	r := run(t, "--max", "5", "timeout", loc("max/"))
+	expect(t, r, 2, "",
 		"gcsgrep: error: the prefix has 10 objects, which exceeds the limit of 5 (use --max to raise it, or --max 0 to disable it)\n")
+	expectNoProgress(t, r)
 }
 
 func TestVC17_2_GuardrailRaised(t *testing.T) {
@@ -267,8 +305,10 @@ func TestVC25_4_BucketDoesNotExist(t *testing.T) {
 }
 
 func TestVC26_LocationWithoutObjects(t *testing.T) {
-	expect(t, run(t, "timeout", loc("prefijo-sin-objetos/")), 1, "",
+	r := run(t, "timeout", loc("prefijo-sin-objetos/"))
+	expect(t, r, 1, "",
 		fmt.Sprintf("gcsgrep: warning: no objects under gs://%s/prefijo-sin-objetos/\n", bucket))
+	expectNoProgress(t, r)
 }
 
 func TestVC27_PrefixWithoutTrailingSlash(t *testing.T) {
@@ -345,8 +385,8 @@ func runCounting(t *testing.T, args ...string) (result, *openCounter) {
 	}
 	var stdout, stderr bytes.Buffer
 	code := app.Run(context.Background(), args, &stdout, &stderr, factory)
-	r := result{code, stdout.String(), stderr.String()}
-	t.Logf("gcsgrep %s\n--- exit %d\n--- stdout\n%s--- stderr\n%s--- opened %v", strings.Join(args, " "), r.code, r.stdout, r.stderr, counter.opened)
+	r := newResult(code, stdout.String(), stderr.String())
+	t.Logf("gcsgrep %s\n--- exit %d\n--- stdout\n%s--- stderr\n%s--- progress\n%s--- opened %v", strings.Join(args, " "), r.code, r.stdout, r.stderr, r.progress, counter.opened)
 	return r, counter
 }
 
@@ -428,5 +468,23 @@ func TestVC7_FilesWithMatchesAndCountAreExclusive(t *testing.T) {
 	}
 	if created {
 		t.Errorf("the GCS client was created; no GCS call is allowed")
+	}
+}
+
+// VC-10.2: stderr redirected, one line per multiple of 10%, no \r.
+func TestVC10_2_ProgressRedirected(t *testing.T) {
+	r := run(t, "timeout", loc("prog/"))
+	if r.code != 1 || r.stdout != "" || r.stderr != "" {
+		t.Errorf("exit %d, stdout %q, stderr %q; want 1 and nothing else", r.code, r.stdout, r.stderr)
+	}
+	var want strings.Builder
+	for i := 1; i <= 10; i++ {
+		fmt.Fprintf(&want, "gcsgrep: progress: %d/50 (%d%%)\n", i*5, i*10)
+	}
+	if r.progress != want.String() {
+		t.Errorf("progress = %q, want %q", r.progress, want.String())
+	}
+	if strings.Contains(r.progress, "\r") {
+		t.Errorf("progress contains \\r")
 	}
 }

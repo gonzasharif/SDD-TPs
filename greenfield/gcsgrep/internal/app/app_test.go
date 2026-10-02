@@ -12,10 +12,27 @@ import (
 )
 
 type outcome struct {
-	code           int
+	code int
+	// stdout and stderr are what the run wrote; stderr leaves out the
+	// progress lines (FR-10), which are in progress.
 	stdout, stderr string
+	progress       string
 	factoryCalls   int
 	gcsCalls       int
+}
+
+// splitProgress separates the progress lines from the rest of stderr, so
+// tests about avisos and errors keep comparing stderr exactly.
+func splitProgress(stderr string) (rest, progress string) {
+	var restLines, progressLines []string
+	for _, l := range strings.SplitAfter(stderr, "\n") {
+		if strings.HasPrefix(l, "gcsgrep: progress: ") {
+			progressLines = append(progressLines, l)
+		} else {
+			restLines = append(restLines, l)
+		}
+	}
+	return strings.Join(restLines, ""), strings.Join(progressLines, "")
 }
 
 // runWith runs gcsgrep against fake, counting how many times the client
@@ -31,7 +48,8 @@ func runWith(fake *gcsclienttest.Fake, factoryErr error, argv ...string) outcome
 		return fake, nil
 	}
 	code := Run(context.Background(), argv, &stdout, &stderr, factory)
-	return outcome{code, stdout.String(), stderr.String(), factoryCalls, fake.Calls()}
+	rest, progress := splitProgress(stderr.String())
+	return outcome{code, stdout.String(), rest, progress, factoryCalls, fake.Calls()}
 }
 
 func logsData() *gcsclienttest.Fake {
