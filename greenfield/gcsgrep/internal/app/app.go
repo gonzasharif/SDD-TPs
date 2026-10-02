@@ -48,6 +48,9 @@ func Run(ctx context.Context, argv []string, stdout, stderr io.Writer, newClient
 		Bucket:     args.Bucket,
 		Prefix:     args.Prefix,
 		MaxObjects: args.MaxObjects,
+
+		MaxObjectSize: args.MaxObjectSize,
+		MaxTotalSize:  args.MaxTotalSize,
 	}
 	return scanner.Run(ctx, client, cfg, m, w)
 }

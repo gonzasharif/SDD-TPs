@@ -116,3 +116,46 @@ func TestParse_MaxObjectsDefaultAndOverride(t *testing.T) {
 		}
 	}
 }
+
+// BR-4, BR-5: defaults (250 MiB and 2 GiB), overrides, and 0 to disable.
+func TestParse_SizeLimitsDefaultAndOverride(t *testing.T) {
+	cases := []struct {
+		argv       []string
+		wantObject int64
+		wantTotal  int64
+	}{
+		{[]string{"timeout", "gs://logs/"}, 262144000, 2147483648},
+		{[]string{"--max-object-size", "1048576", "--max-total-size", "2621440", "timeout", "gs://logs/"}, 1048576, 2621440},
+		{[]string{"--max-object-size", "0", "--max-total-size", "0", "timeout", "gs://logs/"}, 0, 0},
+		{[]string{"--max-total-size", "4294967296", "timeout", "gs://logs/"}, 262144000, 4294967296},
+	}
+	for _, tc := range cases {
+		args, err := Parse(tc.argv)
+		if err != nil {
+			t.Fatalf("Parse(%v): %v", tc.argv, err)
+		}
+		if args.MaxObjectSize != tc.wantObject || args.MaxTotalSize != tc.wantTotal {
+			t.Errorf("Parse(%v) sizes = %d, %d; want %d, %d", tc.argv, args.MaxObjectSize, args.MaxTotalSize, tc.wantObject, tc.wantTotal)
+		}
+	}
+}
+
+// VC-31.3 and VC-31.4 extended to every limit flag (FR-22.3, FR-22.4).
+func TestParse_SizeLimitsRejectInvalidValues(t *testing.T) {
+	for _, flagName := range []string{"--max-object-size", "--max-total-size"} {
+		cases := []struct {
+			value string
+			want  string
+		}{
+			{"diez", `invalid value "diez" for ` + flagName + `: must be an integer`},
+			{"1.5", `invalid value "1.5" for ` + flagName + `: must be an integer`},
+			{"-5", `invalid value "-5" for ` + flagName + `: must be >= 0`},
+		}
+		for _, tc := range cases {
+			_, err := Parse([]string{flagName, tc.value, "timeout", "gs://logs/"})
+			if err == nil || err.Error() != tc.want {
+				t.Errorf("Parse(%s %s) error = %v, want %q", flagName, tc.value, err, tc.want)
+			}
+		}
+	}
+}

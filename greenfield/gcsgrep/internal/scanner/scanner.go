@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"gcsgrep/internal/gcsclient"
 	"gcsgrep/internal/match"
@@ -28,6 +29,12 @@ const (
 // DefaultMaxObjects is BR-3's default object-count guardrail.
 const DefaultMaxObjects = 1000
 
+// Default values of the size guardrails (BR-4, BR-5).
+const (
+	DefaultMaxObjectSize = 250 << 20 // 250 MiB
+	DefaultMaxTotalSize  = 2 << 30   // 2 GiB
+)
+
 // Config controls a single scan run.
 type Config struct {
 	Bucket string
@@ -37,6 +44,14 @@ type Config struct {
 	// many objects, the run aborts before reading any content. Zero
 	// disables the guardrail entirely (the documented `--max 0`).
 	MaxObjects int
+
+	// MaxObjectSize is BR-4's limit, in bytes of decompressed content read
+	// from one object. Zero disables it (`--max-object-size 0`).
+	MaxObjectSize int64
+
+	// MaxTotalSize is BR-5's limit, in bytes of decompressed content read in
+	// the whole run. Zero disables it (`--max-total-size 0`).
+	MaxTotalSize int64
 }
 
 // Run lists objects under cfg.Bucket/cfg.Prefix (FR-1, FR-2, FR-18),
@@ -62,12 +77,18 @@ func Run(ctx context.Context, client gcsclient.Client, cfg Config, m *match.Matc
 		return ExitError
 	}
 
+	budget := reader.NewBudget(cfg.MaxTotalSize)
 	matchFound := false
 	anyError := false
 	for _, obj := range objects {
-		matched, failed := scanObject(ctx, client, cfg.Bucket, obj.Name, m, w)
-		matchFound = matchFound || matched
-		anyError = anyError || failed
+		res := scanObject(ctx, client, cfg, budget, obj.Name, m, w)
+		matchFound = matchFound || res.matched
+		anyError = anyError || res.failed
+		if res.scanIncomplete {
+			w.Error("total size limit of %d bytes reached, scan incomplete", cfg.MaxTotalSize) // BR-5
+			anyError = true
+			break
+		}
 	}
 
 	switch {
@@ -80,33 +101,58 @@ func Run(ctx context.Context, client gcsclient.Client, cfg Config, m *match.Matc
 	}
 }
 
+// objectResult is what scanning one object means for the run.
+type objectResult struct {
+	matched bool
+	// failed means the object counts as an error: an objeto fallido (FR-9,
+	// NFR-3) or an objeto cortado (BR-4).
+	failed bool
+	// scanIncomplete means BR-5's limit was reached while reading this
+	// object, so the run must stop.
+	scanIncomplete bool
+}
+
 // scanObject opens and processes one object, printing its matches as they
-// are found and its avisos afterwards. It reports whether the object had at
-// least one match and whether it ended as an objeto fallido (FR-9, NFR-3).
-func scanObject(ctx context.Context, client gcsclient.Client, bucket, name string, m *match.Matcher, w *output.Writer) (matched, failed bool) {
-	stream, err := client.Open(ctx, bucket, name)
+// are found and its avisos afterwards.
+func scanObject(ctx context.Context, client gcsclient.Client, cfg Config, budget *reader.Budget, name string, m *match.Matcher, w *output.Writer) objectResult {
+	stream, err := client.Open(ctx, cfg.Bucket, name)
 	if err != nil {
-		w.Warning("%s: %s", name, describeOpenError(err)) // FR-9.1, FR-9.3, FR-9.4
-		return false, true
+		w.Warning("%s: %s", name, describeOpenError(err)) // FR-9.1, FR-9.3, FR-9.4, NFR-3
+		return objectResult{failed: true}
 	}
 	defer stream.Close()
 
-	res := reader.ProcessObject(stream, m, reader.Options{}, func(lm reader.LineMatch) {
+	opts := reader.Options{
+		Gzip:          strings.HasSuffix(name, ".gz"), // FR-12
+		MaxObjectSize: cfg.MaxObjectSize,
+		Budget:        budget,
+	}
+	res := reader.ProcessObject(stream, m, opts, func(lm reader.LineMatch) {
 		w.Match(name, lm.LineNum, lm.Text)
 	})
 
+	out := objectResult{matched: res.MatchCount > 0}
 	if res.Skipped {
 		w.Warning("%s: skipped (%s)", name, res.SkipReason) // FR-11
-		return false, false
+		return out
 	}
 	if res.LongLineWarn {
 		w.Warning("%s: skipped lines longer than 1 MiB", name) // FR-15
 	}
-	if res.Failed {
-		w.Warning("%s: %s", name, res.FailReason) // NFR-3: read interrupted
-		return res.MatchCount > 0, true
+	switch {
+	case res.ScanIncomplete:
+		out.scanIncomplete = true // BR-5: Run prints the error
+	case res.Cut:
+		w.Warning(
+			"%s: object size limit of %d bytes reached, rest of the object not read",
+			name, cfg.MaxObjectSize,
+		) // BR-4
+		out.failed = true
+	case res.Failed:
+		w.Warning("%s: %s", name, res.FailReason) // FR-9.2, NFR-3
+		out.failed = true
 	}
-	return res.MatchCount > 0, false
+	return out
 }
 
 // describeListError builds the FR-16 message for a failed listing.

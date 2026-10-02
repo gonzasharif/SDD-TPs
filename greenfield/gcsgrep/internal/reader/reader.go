@@ -9,6 +9,7 @@ package reader
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 
@@ -52,6 +53,16 @@ type ObjectResult struct {
 	Failed     bool
 	FailReason string
 
+	// Cut means the object has more content than the per-object limit
+	// allows (BR-4), so reading stopped there: an objeto cortado. Matches
+	// emitted before the cut stay emitted. It is an error (FR-8).
+	Cut bool
+
+	// ScanIncomplete means the run has read more content than the total
+	// limit allows (BR-5), so reading stopped in this object and the run must
+	// not open any more objects.
+	ScanIncomplete bool
+
 	// LongLineWarn is true if at least one line exceeded MaxLineSize and
 	// was skipped whole rather than matched partially (FR-15).
 	LongLineWarn bool
@@ -63,6 +74,17 @@ type Options struct {
 	// it's treated as too long and skipped whole. Zero means
 	// DefaultMaxLineSize. Only tests override it.
 	MaxLineSize int
+
+	// Gzip means the stream is gzip-compressed (FR-12): it is decompressed by
+	// streaming, and every other option and check applies to the
+	// decompressed bytes.
+	Gzip bool
+
+	// MaxObjectSize is BR-4's limit in bytes (0 means none).
+	MaxObjectSize int64
+
+	// Budget is the bytes counter of the run, for BR-5 (nil means none).
+	Budget *Budget
 }
 
 // ProcessObject reads stream line by line, skips it whole if it looks
@@ -79,7 +101,13 @@ func ProcessObject(stream io.Reader, m *match.Matcher, opts Options, emit func(L
 		maxLineSize = DefaultMaxLineSize
 	}
 
-	isBinary, combined := sniffBinary(stream)
+	var content io.Reader = stream
+	if opts.Gzip {
+		content = newLazyGzipReader(content)
+	}
+	content = newLimitedReader(content, opts.MaxObjectSize, opts.Budget)
+
+	isBinary, combined := sniffBinary(content)
 	if isBinary {
 		res.Skipped = true
 		res.SkipReason = "binary object"
@@ -94,8 +122,7 @@ func ProcessObject(stream io.Reader, m *match.Matcher, opts Options, emit func(L
 			break
 		}
 		if err != nil {
-			res.Failed = true
-			res.FailReason = fmt.Sprintf("read interrupted: %v", err)
+			recordReadError(&res, err)
 			return res
 		}
 		lineNum++
@@ -111,6 +138,24 @@ func ProcessObject(stream io.Reader, m *match.Matcher, opts Options, emit func(L
 		}
 	}
 	return res
+}
+
+// recordReadError sets the outcome that a read error means: a guardrail was
+// hit (BR-4, BR-5), the gzip data is invalid (FR-9.2), or the stream broke
+// mid-read (NFR-3).
+func recordReadError(res *ObjectResult, err error) {
+	switch {
+	case errors.Is(err, errTotalLimit):
+		res.ScanIncomplete = true
+	case errors.Is(err, errObjectLimit):
+		res.Cut = true
+	case errors.Is(err, errCorruptGzip):
+		res.Failed = true
+		res.FailReason = "corrupt gzip data"
+	default:
+		res.Failed = true
+		res.FailReason = fmt.Sprintf("read interrupted: %v", err)
+	}
 }
 
 // sniffBinary peeks at the first sniffSize bytes of r looking for a null

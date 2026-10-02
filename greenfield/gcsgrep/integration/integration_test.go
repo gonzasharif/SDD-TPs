@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -296,4 +297,85 @@ func TestVC30_1_EmptyObject(t *testing.T) {
 
 func TestVC30_2_LastLineWithoutNewline(t *testing.T) {
 	expect(t, run(t, "timeout", loc("n/")), 0, "n/last.log:2:dos timeout\n", "")
+}
+
+// openCounter wraps the real client and records which objects are opened
+// (VC-19 asserts the exact number of openings).
+type openCounter struct {
+	gcsclient.Client
+	opened []string
+}
+
+func (c *openCounter) Open(ctx context.Context, bucket, object string) (io.ReadCloser, error) {
+	c.opened = append(c.opened, object)
+	return c.Client.Open(ctx, bucket, object)
+}
+
+// runCounting is run with a client that counts object openings.
+func runCounting(t *testing.T, args ...string) (result, *openCounter) {
+	t.Helper()
+	if bucket == "" {
+		t.Skip("GCSGREP_TEST_BUCKET is not set")
+	}
+	counter := &openCounter{}
+	factory := func(ctx context.Context) (gcsclient.Client, error) {
+		real, err := gcsclient.New(ctx)
+		counter.Client = real
+		return counter, err
+	}
+	var stdout, stderr bytes.Buffer
+	code := app.Run(context.Background(), args, &stdout, &stderr, factory)
+	r := result{code, stdout.String(), stderr.String()}
+	t.Logf("gcsgrep %s\n--- exit %d\n--- stdout\n%s--- stderr\n%s--- opened %v", strings.Join(args, " "), r.code, r.stdout, r.stderr, counter.opened)
+	return r, counter
+}
+
+// expectStderrLine checks that stderr contains line as one of its lines.
+func expectStderrLine(t *testing.T, r result, line string) {
+	t.Helper()
+	for _, l := range strings.Split(r.stderr, "\n") {
+		if l == line {
+			return
+		}
+	}
+	t.Errorf("stderr = %q, want it to contain the line %q", r.stderr, line)
+}
+
+func TestVC9_2_CorruptGzip(t *testing.T) {
+	r := run(t, "timeout", loc("gzbad/"))
+	if r.code != 2 || r.stdout != "gzbad/ok.log:1:timeout\n" {
+		t.Errorf("exit %d, stdout %q; want 2 and the match of ok.log", r.code, r.stdout)
+	}
+	expectStderrLine(t, r, "gcsgrep: warning: gzbad/bad.gz: corrupt gzip data")
+}
+
+func TestVC12_1_GzipDecompressed(t *testing.T) {
+	expect(t, run(t, "timeout", loc("gz/")), 0, "gz/app.log.gz:2:ERROR timeout\n", "")
+}
+
+func TestVC12_2_BinaryGzipSkipped(t *testing.T) {
+	r := run(t, "timeout", loc("gzb/"))
+	if r.code != 1 || r.stdout != "" {
+		t.Errorf("exit %d, stdout %q; want 1 and empty", r.code, r.stdout)
+	}
+	expectStderrLine(t, r, "gcsgrep: warning: gzb/icon.png.gz: skipped (binary object)")
+}
+
+func TestVC18_ObjectSizeGuardrail(t *testing.T) {
+	r := run(t, "--max-object-size", "1048576", "timeout", loc("big/"))
+	if r.code != 2 || r.stdout != "big/ok.log:1:timeout\n" {
+		t.Errorf("exit %d, stdout %q; want 2 and the match of ok.log", r.code, r.stdout)
+	}
+	expectStderrLine(t, r, "gcsgrep: warning: big/app.log.gz: object size limit of 1048576 bytes reached, rest of the object not read")
+}
+
+func TestVC19_TotalSizeGuardrail(t *testing.T) {
+	r, counter := runCounting(t, "--max-total-size", "2621440", "timeout", loc("tot/"))
+	if r.code != 2 || r.stdout != "tot/1.log:1:timeout\ntot/2.log:1:timeout\ntot/3.log:1:timeout\n" {
+		t.Errorf("exit %d, stdout %q; want 2 and the matches of tot/1..3", r.code, r.stdout)
+	}
+	if len(counter.opened) != 3 {
+		t.Errorf("openings = %v, want exactly 3", counter.opened)
+	}
+	expectStderrLine(t, r, "gcsgrep: error: total size limit of 2621440 bytes reached, scan incomplete")
 }

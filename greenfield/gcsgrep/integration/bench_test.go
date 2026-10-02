@@ -126,7 +126,7 @@ func TestVC22_ConstantMemory(t *testing.T) {
 	peak := func(object string) int64 {
 		var rss []int64
 		for i := 0; i < repetitions; i++ {
-			cmd := exec.Command(bin, "needle", loc(object))
+			cmd := exec.Command(bin, "--max-object-size", "0", "--max-total-size", "0", "needle", loc(object))
 			var stderr bytes.Buffer
 			cmd.Stderr = &stderr
 			err := cmd.Run()

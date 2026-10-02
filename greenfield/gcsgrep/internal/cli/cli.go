@@ -24,6 +24,10 @@ type Args struct {
 	Prefix     string
 	IgnoreCase bool
 	MaxObjects int
+	// MaxObjectSize and MaxTotalSize are BR-4's and BR-5's limits in bytes
+	// (0 disables them).
+	MaxObjectSize int64
+	MaxTotalSize  int64
 }
 
 // Parse parses argv (os.Args[1:]) into Args.
@@ -37,9 +41,13 @@ func Parse(argv []string) (Args, error) {
 	fs.Bool("n", true, "show line numbers (always on)")
 	maxObjects := &nonNegativeInt{flagName: "--max", value: scanner.DefaultMaxObjects}
 	fs.Var(maxObjects, "max", "cap on the number of objects to scan under the prefix (0 disables the guardrail)")
+	maxObjectSize := &nonNegativeInt{flagName: "--max-object-size", value: scanner.DefaultMaxObjectSize}
+	fs.Var(maxObjectSize, "max-object-size", "cap on the bytes read from one object, in bytes (0 disables the guardrail)")
+	maxTotalSize := &nonNegativeInt{flagName: "--max-total-size", value: scanner.DefaultMaxTotalSize}
+	fs.Var(maxTotalSize, "max-total-size", "cap on the bytes read in the whole run, in bytes (0 disables the guardrail)")
 
 	if err := fs.Parse(argv); err != nil {
-		return Args{}, translateFlagError(err, maxObjects)
+		return Args{}, translateFlagError(err, maxObjects, maxObjectSize, maxTotalSize)
 	}
 
 	rest := fs.Args()
@@ -57,7 +65,10 @@ func Parse(argv []string) (Args, error) {
 		Bucket:     bucket,
 		Prefix:     prefix,
 		IgnoreCase: *ignoreCase,
-		MaxObjects: maxObjects.value,
+		MaxObjects: int(maxObjects.value),
+
+		MaxObjectSize: maxObjectSize.value,
+		MaxTotalSize:  maxTotalSize.value,
 	}, nil
 }
 
@@ -100,19 +111,19 @@ func translateFlagError(err error, values ...*nonNegativeInt) error {
 	return err
 }
 
-// nonNegativeInt is a flag.Value for limit flags (--max; later
-// --max-object-size and --max-total-size) that accepts integers >= 0 and
+// nonNegativeInt is a flag.Value for the limit flags (--max,
+// --max-object-size, --max-total-size) that accepts integers >= 0 and
 // records a spec-formatted error otherwise.
 type nonNegativeInt struct {
 	flagName string
-	value    int
+	value    int64
 	err      error
 }
 
-func (n *nonNegativeInt) String() string { return strconv.Itoa(n.value) }
+func (n *nonNegativeInt) String() string { return strconv.FormatInt(n.value, 10) }
 
 func (n *nonNegativeInt) Set(s string) error {
-	v, err := strconv.Atoi(s)
+	v, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
 		n.err = fmt.Errorf("invalid value %q for %s: must be an integer", s, n.flagName)
 		return n.err
