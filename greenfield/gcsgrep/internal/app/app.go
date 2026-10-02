@@ -42,6 +42,8 @@ func Run(ctx context.Context, argv []string, stdout, stderr io.Writer, newClient
 		return scanner.ExitError
 	}
 
+	client = gcsclient.WithRetries(client, gcsclient.DefaultRetryPolicy) // NFR-3
+
 	cfg := scanner.Config{
 		Bucket:     args.Bucket,
 		Prefix:     args.Prefix,

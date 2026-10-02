@@ -111,7 +111,10 @@ func scanObject(ctx context.Context, client gcsclient.Client, bucket, name strin
 
 // describeListError builds the FR-16 message for a failed listing.
 func describeListError(err error, cfg Config) string {
+	var exhausted *gcsclient.RetriesExhaustedError
 	switch {
+	case errors.As(err, &exhausted):
+		return fmt.Sprintf("could not list gs://%s/%s after %d attempts: %v", cfg.Bucket, cfg.Prefix, exhausted.Attempts, exhausted.Err) // NFR-3
 	case errors.Is(err, gcsclient.ErrPermissionDenied):
 		return fmt.Sprintf("permission denied listing gs://%s/%s", cfg.Bucket, cfg.Prefix)
 	case errors.Is(err, gcsclient.ErrBucketNotFound):
@@ -122,9 +125,12 @@ func describeListError(err error, cfg Config) string {
 }
 
 // describeOpenError builds the <causa> of the FR-9 aviso for an object that
-// could not be opened.
+// could not be opened (FR-9, NFR-3).
 func describeOpenError(err error) string {
+	var exhausted *gcsclient.RetriesExhaustedError
 	switch {
+	case errors.As(err, &exhausted):
+		return fmt.Sprintf("network error after %d attempts: %v", exhausted.Attempts, exhausted.Err) // NFR-3
 	case errors.Is(err, gcsclient.ErrPermissionDenied):
 		return "permission denied"
 	case errors.Is(err, gcsclient.ErrObjectNotFound):

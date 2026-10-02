@@ -47,3 +47,34 @@ var (
 	// (FR-9.3). HTTP 404 on opening.
 	ErrObjectNotFound = errors.New("object not found")
 )
+
+// ErrTransient marks a failure that may succeed if tried again: a timeout, a
+// reset connection, or HTTP 408, 429 or 5xx (NFR-3). Implementations wrap
+// SDK errors with Transient so the retry decorator (WithRetries) can decide
+// without knowing anything about the SDK.
+var ErrTransient = errors.New("transient error")
+
+// Transient wraps err so errors.Is(result, ErrTransient) is true. The
+// message stays err's own, so it can be shown as the <detalle> of NFR-3's
+// literal messages.
+func Transient(err error) error {
+	return &transientError{err: err}
+}
+
+type transientError struct{ err error }
+
+func (e *transientError) Error() string { return e.err.Error() }
+func (e *transientError) Unwrap() error { return e.err }
+func (e *transientError) Is(target error) bool {
+	return target == ErrTransient
+}
+
+// RetriesExhaustedError is returned when every attempt failed with a
+// transient error (NFR-3). Err is the failure of the last attempt.
+type RetriesExhaustedError struct {
+	Attempts int
+	Err      error
+}
+
+func (e *RetriesExhaustedError) Error() string { return e.Err.Error() }
+func (e *RetriesExhaustedError) Unwrap() error { return e.Err }

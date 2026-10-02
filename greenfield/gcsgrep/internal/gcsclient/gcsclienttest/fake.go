@@ -9,6 +9,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"time"
 
 	"gcsgrep/internal/gcsclient"
 )
@@ -17,7 +18,12 @@ import (
 type Object struct {
 	Name    string
 	Content string
-	// OpenErr, if set, is returned by Open instead of a stream.
+	// OpenFailures are returned by successive Open calls, one per call, before
+	// Open starts behaving as configured by OpenErr and Content. They
+	// simulate errors that go away on a retry (NFR-3).
+	OpenFailures []error
+	// OpenErr, if set, is returned by every Open call that is not consumed
+	// by OpenFailures, instead of a stream.
 	OpenErr error
 	// ReadErr, if set, is returned by the stream after Content is fully
 	// delivered, simulating a connection that breaks mid-read.
@@ -28,11 +34,20 @@ type Object struct {
 // which tests use as the GCS listing order.
 type Fake struct {
 	Objects []Object
+	// ListFailures are returned by successive List calls, one per call,
+	// before List starts behaving as configured by ListErr and Objects.
+	ListFailures []error
+	// ListErr, if set, is returned by every List call that is not consumed
+	// by ListFailures.
 	ListErr error
 
 	mu           sync.Mutex
 	listPrefixes []string
+	listTimes    []time.Time
 	opened       []string
+	openTimes    map[string][]time.Time
+	failuresUsed map[string]int
+	listFailUsed int
 }
 
 var _ gcsclient.Client = (*Fake)(nil)
@@ -41,8 +56,17 @@ var _ gcsclient.Client = (*Fake)(nil)
 func (f *Fake) List(ctx context.Context, bucket, prefix string) ([]gcsclient.ObjectInfo, error) {
 	f.mu.Lock()
 	f.listPrefixes = append(f.listPrefixes, prefix)
+	f.listTimes = append(f.listTimes, time.Now())
+	var injected error
+	if f.listFailUsed < len(f.ListFailures) {
+		injected = f.ListFailures[f.listFailUsed]
+		f.listFailUsed++
+	}
 	f.mu.Unlock()
 
+	if injected != nil {
+		return nil, injected
+	}
 	if f.ListErr != nil {
 		return nil, f.ListErr
 	}
@@ -59,11 +83,19 @@ func (f *Fake) List(ctx context.Context, bucket, prefix string) ([]gcsclient.Obj
 func (f *Fake) Open(ctx context.Context, bucket, object string) (io.ReadCloser, error) {
 	f.mu.Lock()
 	f.opened = append(f.opened, object)
+	if f.openTimes == nil {
+		f.openTimes = map[string][]time.Time{}
+		f.failuresUsed = map[string]int{}
+	}
+	f.openTimes[object] = append(f.openTimes[object], time.Now())
 	f.mu.Unlock()
 
 	for _, o := range f.Objects {
 		if o.Name != object {
 			continue
+		}
+		if injected := f.nextOpenFailure(o); injected != nil {
+			return nil, injected
 		}
 		if o.OpenErr != nil {
 			return nil, o.OpenErr
@@ -74,6 +106,33 @@ func (f *Fake) Open(ctx context.Context, bucket, object string) (io.ReadCloser, 
 		return io.NopCloser(strings.NewReader(o.Content)), nil
 	}
 	return nil, gcsclient.ErrObjectNotFound
+}
+
+// nextOpenFailure consumes and returns the next OpenFailures entry of o, or
+// nil once they are used up.
+func (f *Fake) nextOpenFailure(o Object) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	used := f.failuresUsed[o.Name]
+	if used >= len(o.OpenFailures) {
+		return nil
+	}
+	f.failuresUsed[o.Name] = used + 1
+	return o.OpenFailures[used]
+}
+
+// ListTimes is the instant of each List call, in call order.
+func (f *Fake) ListTimes() []time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]time.Time(nil), f.listTimes...)
+}
+
+// OpenTimes is the instant of each Open call for object, in call order.
+func (f *Fake) OpenTimes(object string) []time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]time.Time(nil), f.openTimes[object]...)
 }
 
 // ListCalls is how many times List was called.

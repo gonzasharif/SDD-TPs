@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"strings"
+	"syscall"
 
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/googleapi"
@@ -22,11 +25,15 @@ type gcsClient struct {
 // gcsgrep never accepts a service-account key file (decision #2 in
 // gcsgrep-design.md). An error here means no ADC could be resolved
 // (FR-16.2).
+//
+// The SDK's own retries are turned off: the only retry policy is NFR-3's,
+// applied by WithRetries, so the SDK's attempts and waits never add to it.
 func New(ctx context.Context) (Client, error) {
 	sc, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, err
 	}
+	sc.SetRetry(storage.WithPolicy(storage.RetryNever))
 	return &gcsClient{sc: sc}, nil
 }
 
@@ -62,6 +69,8 @@ func translateListError(err error) error {
 		return fmt.Errorf("%w: %v", ErrBucketNotFound, err)
 	case httpStatus(err) == http.StatusForbidden:
 		return fmt.Errorf("%w: %v", ErrPermissionDenied, err)
+	case isTransient(err):
+		return Transient(err)
 	default:
 		return err
 	}
@@ -75,9 +84,31 @@ func translateOpenError(err error) error {
 		return fmt.Errorf("%w: %v", ErrObjectNotFound, err)
 	case httpStatus(err) == http.StatusForbidden:
 		return fmt.Errorf("%w: %v", ErrPermissionDenied, err)
+	case isTransient(err):
+		return Transient(err)
 	default:
 		return err
 	}
+}
+
+// isTransient reports whether err is one of NFR-3's transient failures: a
+// timeout, a reset connection, or HTTP 408, 429 or 5xx. A canceled context
+// is never transient.
+func isTransient(err error) bool {
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	switch status := httpStatus(err); {
+	case status == http.StatusRequestTimeout, status == http.StatusTooManyRequests, status >= 500:
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	return errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		strings.Contains(err.Error(), "connection reset")
 }
 
 // httpStatus returns the HTTP status code carried by a GCS API error, or 0.
