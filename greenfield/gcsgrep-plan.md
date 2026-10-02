@@ -330,7 +330,6 @@ ejercitó y qué se observó, sin borrar ni reescribir las secciones de
 iteraciones anteriores: el documento completo es el historial de qué se
 verificó y cuándo, no solo el estado actual.
 
-La Iteración 1 ya se implementó y verificó contra la versión anterior de la
-spec (commit `3337575`). Con la spec corregida, se ajusta el código a los
-FRs nuevos y se vuelve a verificar, agregando una sección nueva a
-`gcsgrep-cobertura-vc.md`.
+La Iteración 1 se implementó contra la versión anterior de la spec (commit
+`3337575`, tag `01.1-Greenfield`) y se re-verificó contra la spec corregida
+(41/41 VCs, sección de re-verificación de `gcsgrep-cobertura-vc.md`).

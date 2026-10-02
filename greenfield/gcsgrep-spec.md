@@ -240,11 +240,15 @@ contiene exactamente la línea `logs/a.log:2:ERROR timeout`.
 - **Cuando** la herramienta imprime un resultado,
 - **Entonces** cada porción del texto que matchea el patrón queda entre la
   secuencia ANSI de inicio `ESC[1;31m` y la de fin `ESC[0m` (`ESC` = byte
-  `0x1b`); el resto del formato de FR-3.1 no cambia.
+  `0x1b`); el resto del formato de FR-3.1 no cambia. Con `-l` o `-c` la
+  salida no lleva color (FR-5, FR-6): no hay porción de texto que matchee.
 
 **VC-3.2:** Mismo objeto y patrón que VC-3.1, con `stdout` conectado a un
 pseudo-terminal (pty). Verificar que la salida es exactamente
-`logs/a.log:2:ERROR ESC[1;31mtimeoutESC[0m`.
+`logs/a.log:2:ERROR ESC[1;31mtimeoutESC[0m`. Además, sobre
+`gs://<bucket>/logs/a.log` con `stdout` en un pty: con `-l` la salida es
+exactamente `logs/a.log` y con `-c` exactamente `logs/a.log:1`, sin ningún
+byte `0x1b` en ninguno de los dos casos.
 
 #### FR-3.3 — Sin color con `stdout` redirigido
 
@@ -290,8 +294,9 @@ exactamente `l/big.log`, que el exit code es `0` y que se leyeron ≤ 1 MiB
 - **Dado** el flag `-c`,
 - **Cuando** se procesa un objeto completo,
 - **Entonces** se imprime `objeto:cantidad`, donde `cantidad` es el total de
-  líneas que matchean, incluso si es `0`. Un objeto salteado o un objeto
-  fallido no imprime línea de conteo (no se procesó completo).
+  líneas que matchean, incluso si es `0`. Un objeto salteado, un objeto
+  fallido o un objeto cortado (BR-4) no imprime línea de conteo (no se
+  procesó completo).
 
 **VC-6:** Ejecutar `gcsgrep -c timeout gs://<bucket>/c/`. Verificar que
 `stdout` es exactamente `c/none.log:0` y `c/three.log:3`, en ese orden, y
@@ -429,8 +434,11 @@ El **texto de progreso** es
 `gcsgrep: progress: <procesados>/<total> (<porcentaje>%)`, donde `<total>` es la cantidad de objetos listados,
 `<procesados>` la cantidad de objetos ya procesados (con o sin matches,
 salteados o fallidos) y `<porcentaje>` es `procesados × 100 / total`
-redondeado hacia abajo. Si la corrida termina sin procesar ningún objeto
-(FR-1.4, FR-7, FR-14, FR-16, FR-17, FR-22 o BR-3), no se emite progreso.
+redondeado hacia abajo. Un objeto cortado (BR-4 o BR-5) cuenta como
+procesado. Si BR-5 corta la corrida, los objetos sin abrir no se procesan: el
+progreso queda en el último valor emitido (en una terminal igual se emite el
+`\n` final). Si la corrida termina sin procesar ningún objeto (FR-1.4, FR-7,
+FR-14, FR-16, FR-17, FR-22 o BR-3), no se emite progreso.
 
 #### FR-10.1 — `stderr` en una terminal
 
@@ -887,6 +895,10 @@ líneas `INFO`, y `big/ok.log` (única línea `timeout`). Ejecutar
 `stderr` contiene la línea
 `gcsgrep: warning: big/app.log.gz: object size limit of 1048576 bytes reached, rest of the object not read`,
 que `stdout` es exactamente `big/ok.log:1:timeout` y que el exit code es `2`.
+Además, ejecutar `gcsgrep -c --max-object-size 1048576 timeout gs://<bucket>/big/`
+y verificar que `stdout` es exactamente `big/ok.log:1` (el objeto cortado no
+imprime conteo, FR-6), que `stderr` contiene la misma línea de aviso y que el
+exit code es `2`.
 
 ### BR-5 — Guardrail acumulado de la corrida
 *(deriva de BR-g, nueva en el refinamiento)*
@@ -1030,6 +1042,7 @@ VC-23.1 a VC-23.4 el prefijo simulado `r/` contiene solo `r/a.log` =
 | FR-4 | VC-4.1, VC-4.2 | feliz | Test de integración |
 | FR-5 | VC-5 | feliz | Test de integración + medición de bytes leídos |
 | FR-6 | VC-6 | feliz | Test de integración |
+| FR-6 | VC-18 | borde (objeto cortado, sin conteo) | Test de integración con .gz grande |
 | FR-7 | VC-7 | falla (error de uso) | Test CLI con cliente que cuenta llamadas |
 | FR-8.1 | VC-8.1 | feliz | Test de integración |
 | FR-8.2 | VC-8.2 | feliz (sin resultados) | Test de integración |

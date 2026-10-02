@@ -218,7 +218,8 @@ y acota a 8 los objetos que llegan al tope por objeto.
 **Elegido:** `objeto:línea:texto`, con el nombre de objeto sin
 `gs://bucket/` (ej. `logs/a.log:2:ERROR timeout`). Si `stdout` es una
 terminal, el texto matcheado se resalta con color ANSI; si está redirigido
-(pipe o archivo), sale en texto plano.
+(pipe o archivo), sale en texto plano. Con `-l` y `-c` no hay color: la salida
+es solo el nombre del objeto o `objeto:cantidad`, sin porción que resaltar.
 
 **Fundamento:** es el formato de `grep -Hn`, que editores y herramientas
 (`cut -d:`, quickfix) ya saben leer. El bucket se omite porque una corrida
@@ -307,7 +308,8 @@ nuevos en vez de sobreescribir los existentes.
 total, con esperas de 500ms antes del 2º intento y 1s antes del 3º, ± 20% de
 jitter. Los demás errores HTTP 4xx (403, 404, etc.) no se reintentan. Un error a mitad de la lectura de un objeto no
 se reintenta: el objeto queda como objeto fallido y las líneas ya impresas
-se mantienen.
+se mantienen. La política efectiva es exactamente esta: los reintentos
+propios del SDK de GCS se desactivan para que no se sumen a los de `gcsgrep`.
 
 **Fundamento:** 3 intentos absorben un error puntual (un 503 aislado) sin que
 un objeto caído demore la corrida más de 1,8 s de espera (1,5 s ± 20%). El
@@ -354,7 +356,10 @@ partido o perder uno que cae justo en el punto de corte.
 **Elegido:** si `stderr` es una terminal, una línea de progreso (objetos
 procesados / total listado y porcentaje) que se redibuja en el lugar cada vez
 que termina un objeto. Si no es una terminal, una línea simple cada 10% de objetos
-procesados, sin secuencias de redibujado.
+procesados, sin secuencias de redibujado. Un objeto cortado (BR-4 o BR-5)
+cuenta como procesado; si BR-5 corta la corrida, el progreso queda en el
+último valor emitido y el mensaje de error de BR-5 explica por qué no llegó a
+100%.
 
 **Fundamento:** redibujar al terminar cada objeto es el mínimo que refleja
 avance real, sin temporizadores. En un log, una línea cada 10% acota la
