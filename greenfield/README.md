@@ -34,9 +34,10 @@ para escribir los resultados.
 | `internal/cli` | Parsea los argumentos a una estructura |
 | `internal/match` | Aplica el patrón a una línea de texto; sin I/O |
 | `internal/gcsclient` | Capa anticorrupción sobre el SDK de GCS; es el único código que lo importa. `gcsclienttest/` trae un cliente falso para los tests |
-| `internal/scanner` | Lista los objetos de una corrida y aplica el guardrail de cantidad de objetos |
-| `internal/reader` | Procesa un objeto por streaming, sin leerlo entero en memoria; detecta binarios |
+| `internal/scanner` | Lista los objetos, aplica los guardrails (cantidad, tamaño por objeto y acumulado), los modos `-l`/`-c` y el progreso |
+| `internal/reader` | Procesa un objeto por streaming (con descompresión gzip y límites de tamaño); detecta binarios |
 | `internal/output` | Escribe resultados (stdout) y avisos (stderr) |
+| `internal/tty` | Detecta si stdout/stderr son una terminal (color y progreso) |
 | `internal/invariants` | Sin código de producción: tests que verifican propiedades estructurales de todo el código |
 | `integration/` | Tests de los VCs contra GCS real (build tag `integration`) |
 | `testdata/setup-testdata.sh` | Crea en GCS los datos de prueba y las cuentas de servicio |
@@ -53,12 +54,17 @@ go test ./...    # tests unitarios (incluye los chequeos de VC-1.2 y VC-15.2)
 ```
 
 ```bash
-./gcsgrep [-i] [-n] [--max N] PATRÓN gs://bucket/prefijo
+./gcsgrep [-i] [-n] [-l | -c] [--max N] [--max-object-size N] [--max-total-size N] PATRÓN gs://bucket/prefijo
 ```
 
 El patrón es una expresión regular RE2. Necesita Application Default Credentials
 (`gcloud auth application-default login`): no acepta ninguna otra forma de autenticación.
 No escribe nunca en GCS (BR-1).
+
+Desde la Iteración 2: descomprime `.gz` al vuelo, `-l` lista solo los objetos con match,
+`-c` cuenta matches por objeto (`-l` y `-c` son excluyentes), colorea el match y muestra
+progreso en `stderr` cuando hay terminal, reintenta errores de red transitorios (3 intentos)
+y corta por tamaño por objeto (250 MiB) y acumulado (2 GiB); `0` deshabilita cada límite.
 
 Los VCs contra GCS real son tests de Go con build tag `integration` (ver
 `gcsgrep/integration/doc.go`). Los datos que usan se crean con
@@ -75,8 +81,10 @@ Los VCs contra GCS real son tests de Go con build tag `integration` (ver
   contra GCS real y 3 como mediciones de rendimiento y memoria. Detalle en
   `gcsgrep-cobertura-vc.md`, sección "Iteración 1 — re-verificación contra la spec
   corregida".
-- **Iteraciones 2 y 3: planificadas, no implementadas.** Costo en objetos
-  grandes o comprimidos, UX y confiabilidad de red, y concurrencia con validación de
-  rendimiento. Están en `gcsgrep-plan.md`.
+- **Iteración 2: implementada y verificada.** Descompresión, `-l`/`-c`, color, progreso,
+  reintentos (NFR-3) y guardrails de tamaño (BR-4, BR-5). Evidencia en `gcsgrep-cobertura-vc.md`,
+  sección "Iteración 2". Los VCs con terminal (pty) solo corren en Linux.
+- **Iteración 3: planificada, no implementada.** Concurrencia y validación de rendimiento
+  (en `gcsgrep-plan.md`).
 
-Tag de esta carpeta: `01-Greenfield`.
+Tag de esta carpeta: `01.1-Greenfield`.

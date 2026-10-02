@@ -278,3 +278,77 @@ GCSGREP_TEST_BUCKET=<test-bucket> GCSGREP_TEST_CREDS=<dir-con-credenciales> \
 GCSGREP_BENCH=1 GCSGREP_TEST_BUCKET=<test-bucket> \
   go test -tags integration -v -count=1 -timeout 60m -run 'VC21|VC22' ./integration/
 ```
+
+## Iteración 2
+
+### Resumen
+
+| | |
+|---|---|
+| VCs en el alcance de la Iteración 2 | 16 (VC-3.2, 5, 6, 7, 9.2, 10.1, 10.2, 12.1, 12.2, 18, 19, 23.1–23.5) más la regresión |
+| VCs con cobertura ejecutable | 16 |
+| VCs pasando | 16 (más la regresión de VC-21.1, 21.3 y 22) |
+| Criterios de éxito sin evidencia | 0 |
+
+Entorno: igual al de la Iteración 1. Los VCs que usan un cliente GCS
+simulado corren con `go test ./...` (Windows y Linux); los de GCS real, con
+`go test -tags integration` (corrida completa en Linux/WSL); los de TTY
+(VC-3.2, VC-10.1) usan un pty y solo corren en Linux.
+
+### Cobertura, una por una
+
+| VC | Requisito | Ejercitado por | Se observa | Estado |
+|---|---|---|---|---|
+| VC-3.2 | FR-3.2 color con TTY | `integration/pty_test.go::TestVC3_2` (pty) + tests unitarios de `output` y `app/terminal_test.go` | con `stdout` en TTY el patrón sale entre `ESC[1;31m` y `ESC[0m`; sin TTY y con `-l`/`-c` no hay secuencias ANSI | ✅ |
+| VC-5 | FR-5 `-l` | `scanner/modes_test.go` + `integration::TestVC5` (cuenta bytes leídos) | imprime el nombre una vez y deja de leer el objeto en el primer match | ✅ |
+| VC-6 | FR-6 `-c` | `scanner/modes_test.go` + `integration::TestVC6` | `objeto:cantidad`, incluido `0`; los objetos cortados no imprimen conteo | ✅ |
+| VC-7 | FR-7 exclusión `-l`/`-c` | `cli/cli_test.go` + `integration::TestVC7` | exit 2 con el mensaje de uso, cero llamadas al cliente | ✅ |
+| VC-9.2 | FR-9.2 `.gz` corrupto | `reader/gzip_test.go` + `integration::TestVC9_2` (`gzbad/`) | `gzbad/ok.log:1:timeout` en `stdout`, aviso `corrupt gzip data` en `stderr`, exit 2 | ✅ |
+| VC-10.1 | FR-10.1 progreso en TTY | `integration/pty_test.go::TestVC10_1` (pty; segundo caso con `acl/` y `<sa-restringida>`) | redibujo con `\r`, cierre con `\n`; antes de un aviso se borra el progreso con `\r\x1b[K` | ✅ |
+| VC-10.2 | FR-10.2 progreso sin TTY | `scanner/progress_test.go` + `integration::TestVC10_2` (`prog/`) | una línea `gcsgrep: progress: N/50 (P%)` por cada múltiplo nuevo de 10% | ✅ |
+| VC-12.1 | FR-12 descompresión | `reader/gzip_test.go` + `integration::TestVC12_1` (`gz/`) | `gz/app.log.gz` se busca descomprimido, números de línea sobre el contenido descomprimido | ✅ |
+| VC-12.2 | FR-12 binario comprimido | `scanner/compressed_test.go` + `integration::TestVC12_2` (`gzb/`) | `gzb/icon.png.gz` se saltea como binario según el contenido descomprimido | ✅ |
+| VC-18 | BR-4 tamaño por objeto | `reader/limits_test.go` + `integration::TestVC18` (`big/`) | aviso de límite por objeto, `stdout` = `big/ok.log:1:timeout`, exit 2; con `-c`, `big/ok.log:1` y sin conteo del objeto cortado | ✅ |
+| VC-19 | BR-5 acumulado | `scanner/` + `integration::TestVC19` (`tot/`, 3 aperturas) | matches de `tot/1`–`tot/3`, error `total size limit of 2621440 bytes reached, scan incomplete`, exit 2 | ✅ |
+| VC-23.1 | NFR-3 recuperación | `gcsclient/retry_test.go` + `app/retry_test.go` | 3 aperturas, esperas dentro de 400–600 ms y 800–1200 ms, exit 0 (ver nota 2) | ✅ |
+| VC-23.2 | NFR-3 reintentos agotados | ídem | 3 intentos, `network error after 3 attempts: `, exit 2 | ✅ |
+| VC-23.3 | NFR-3 error no transitorio | ídem | 1 intento, `permission denied`, exit 2 | ✅ |
+| VC-23.4 | NFR-3 listado agotado | ídem | 3 listados, 0 aperturas, `could not list ... after 3 attempts: `, exit 2 | ✅ |
+| VC-23.5 | NFR-3 corte a mitad | ídem + `reader` | `r/mid.log:1:timeout uno` una sola vez, `read interrupted: `, 1 apertura, exit 2 | ✅ |
+
+### Regresión
+
+| Qué | Cómo | Se observa | Estado |
+|---|---|---|---|
+| VCs de la Iteración 1 | corrida completa de `go test ./...` y de `go test -tags integration` en WSL | todos pasan; en la última corrida completa los únicos dos fallos eran problemas del entorno de prueba (ver nota 3) y pasaron al corregirlos (VC-2.2: 666 objetos) | ✅ |
+| VC-21.1, VC-21.3, VC-22 | `GCSGREP_BENCH=1 ... -run 'VC21_1\|VC21_3\|VC22'` en WSL; VC-22 con `--max-object-size 0 --max-total-size 0` | VC-21.1: 470,4 s / 541,0 s / 445,4 s → mediana 470,4 s = **1,06 objetos/seg** (umbral ≥ 0,5). VC-21.3: 3,037 s / 1,869 s / 1,825 s → mediana **1,869 s** (umbral ≤ 2 s; la primera corrida superó 2 s, la mediana cumple). VC-22: RSS máximo 39,8 MiB en las 3 corridas de `mem/small.log` y de `mem/large.log` → **diferencia 0,0 MiB** (umbral ≤ 5 MiB) | ✅ |
+| VCs con `stderr` exacto (VC-26, VC-17.1, VC-29, VC-31.x) | tests existentes con el progreso activo | pasan sin cambios | ✅ |
+| VC-31.3, VC-31.4 | `cli/cli_test.go` extendido | `--max-object-size` y `--max-total-size` validados (negativos, no numéricos, `0`) | ✅ |
+
+### Notas
+
+1. **Cambios de spec durante la implementación**, aplicados a spec, diseño y
+   plan: FR-3.2/VC-3.2 sin color en `-l`/`-c`; FR-6 excluye los objetos
+   cortados y VC-18 se extendió con una corrida `-c`; FR-10 cuenta como
+   procesados los objetos cortados y los posteriores a BR-5; FR-10.1/VC-10.1
+   borra el progreso con `\r` + `ESC[K` antes de un mensaje; decisiones de
+   diseño 7, 11 (reintentos del SDK desactivados), 13 (progreso).
+2. **Jitter de reintentos.** Con un jitter de 25% VC-23.1 midió una espera de
+   1,2046 s (> 1,2 s) en una corrida; `DefaultRetryPolicy` usa ahora 15%, que
+   deja margen de medición dentro de la ventana de la spec.
+3. **Fallos de entorno, no de código.** VC-15.1 (ADC pisadas por el test:
+   ahora se restauran) y VC-2.2 (gcloud sin sesión en WSL: hay que exportar
+   `CLOUDSDK_CONFIG`). El test ahora imprime el stderr de gcloud.
+4. **Los VCs de pty (VC-3.2, VC-10.1)** corren solo en Linux; en Windows se
+   omiten. La detección de TTY usa `golang.org/x/sys`.
+
+### Cómo se ejercita todo
+
+```bash
+cd gcsgrep
+go vet ./... && go vet -tags integration ./... && go test ./...
+GCSGREP_TEST_BUCKET=<test-bucket> GCSGREP_TEST_CREDS=<dir-con-credenciales> \
+  go test -tags integration -v -count=1 ./integration/
+GCSGREP_BENCH=1 GCSGREP_TEST_BUCKET=<test-bucket> \
+  go test -tags integration -v -count=1 -timeout 60m -run 'VC21_1|VC21_3|VC22' ./integration/
+```

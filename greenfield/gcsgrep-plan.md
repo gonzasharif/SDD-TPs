@@ -212,17 +212,17 @@ volumen de resultados (`-l`, `-c`), mejorar la experiencia interactiva
 
 **Criterios de éxito** (16 VCs, más la regresión)
 
-- [ ] Todos los VCs de la Iteración 1 siguen pasando (ver nota de regresión)
-- [ ] VC-3.2 — color con TTY
-- [ ] VC-5 — `-l` corta la lectura en el primer match
-- [ ] VC-6 — `-c` cuenta matches, incluso `0`
-- [ ] VC-7 — `-l` y `-c` juntas se rechazan con exit 2
-- [ ] VC-9.2 — objeto comprimido corrupto
-- [ ] VC-10.1, VC-10.2 — progreso en TTY y sin TTY
-- [ ] VC-12.1, VC-12.2 — descompresión y binario comprimido
-- [ ] VC-18 — guardrail de tamaño por objeto
-- [ ] VC-19 — guardrail acumulado
-- [ ] VC-23.1, VC-23.2, VC-23.3, VC-23.4, VC-23.5 — reintentos y corte a mitad
+- [x] Todos los VCs de la Iteración 1 siguen pasando (ver nota de regresión)
+- [x] VC-3.2 — color con TTY
+- [x] VC-5 — `-l` corta la lectura en el primer match
+- [x] VC-6 — `-c` cuenta matches, incluso `0`
+- [x] VC-7 — `-l` y `-c` juntas se rechazan con exit 2
+- [x] VC-9.2 — objeto comprimido corrupto
+- [x] VC-10.1, VC-10.2 — progreso en TTY y sin TTY
+- [x] VC-12.1, VC-12.2 — descompresión y binario comprimido
+- [x] VC-18 — guardrail de tamaño por objeto
+- [x] VC-19 — guardrail acumulado
+- [x] VC-23.1, VC-23.2, VC-23.3, VC-23.4, VC-23.5 — reintentos y corte a mitad
       de lectura
 
 **Nota de regresión:**

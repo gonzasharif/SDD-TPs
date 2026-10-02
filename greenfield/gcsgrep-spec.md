@@ -445,12 +445,23 @@ FR-14, FR-16, FR-17, FR-22 o BR-3), no se emite progreso.
 - **Dado** que `stderr` es una terminal (TTY),
 - **Cuando** termina de procesarse cada objeto,
 - **Entonces** se redibuja en el lugar el texto de progreso (precedido por
-  `\r`, sin `\n`), y al terminar la corrida se emite un único `\n`.
+  `\r`, sin `\n`), y al terminar la corrida se emite un único `\n`. Si
+  mientras el texto de progreso está en pantalla se va a emitir un aviso, un
+  mensaje de error o una línea de `stdout`, antes se emiten `\r` y `ESC[K`
+  (borra la línea): lo emitido reemplaza al progreso en vez de quedar pegado
+  a él.
 
 **VC-10.1:** `gcsgrep timeout gs://<bucket>/prog/` (50 objetos), con
 `stderr` conectado a un pseudo-terminal (pty). Verificar que `stderr` contiene exactamente 50
 redibujos (`\r` seguido del texto de progreso), con porcentajes 2, 4, …,
-100 en orden creciente, y que termina en `\n`.
+100 en orden creciente, y que termina en `\n`. Además, con las credenciales
+de `<sa-restringida>`, ejecutar `gcsgrep secreto gs://<bucket>/acl/` (6
+objetos; `acl/denied.log` es el último y no se puede leer) con `stderr` en un
+pty. Verificar que `stderr` es exactamente: los 5 redibujos `\r` +
+`gcsgrep: progress: 1/6 (16%)`, `2/6 (33%)`, `3/6 (50%)`, `4/6 (66%)` y
+`5/6 (83%)`; después `\r`, `ESC[K` y la línea
+`gcsgrep: warning: acl/denied.log: permission denied` terminada en `\n`; y por
+último el redibujo `\r` + `gcsgrep: progress: 6/6 (100%)` y un `\n`.
 
 #### FR-10.2 — `stderr` redirigido
 

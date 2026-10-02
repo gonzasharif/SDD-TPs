@@ -359,7 +359,9 @@ que termina un objeto. Si no es una terminal, una línea simple cada 10% de obje
 procesados, sin secuencias de redibujado. Un objeto cortado (BR-4 o BR-5)
 cuenta como procesado; si BR-5 corta la corrida, el progreso queda en el
 último valor emitido y el mensaje de error de BR-5 explica por qué no llegó a
-100%.
+100%. En una terminal, un aviso, un error o una línea de `stdout` que se emite
+con el texto de progreso en pantalla lo borra antes (`\r` + `ESC[K`): sin eso
+el mensaje queda pegado al progreso y el siguiente redibujo lo pisa a medias.
 
 **Fundamento:** redibujar al terminar cada objeto es el mínimo que refleja
 avance real, sin temporizadores. En un log, una línea cada 10% acota la
