@@ -205,3 +205,37 @@ func TestProcessObject_ReadErrorMidLineIsNotTreatedAsEOF(t *testing.T) {
 		t.Errorf("a partial line cut by an error must not be matched: %+v", got)
 	}
 }
+
+// FR-5: with StopAtFirstMatch the object is not read past the first match,
+// and only that match is emitted.
+func TestProcessObject_StopAtFirstMatch(t *testing.T) {
+	stream := &countingReader{r: strings.NewReader("timeout 1\ntimeout 2\n" + strings.Repeat("INFO\n", 1<<20))}
+
+	res, got := process(t, stream, "timeout", Options{StopAtFirstMatch: true})
+
+	if res.MatchCount != 1 || len(got) != 1 || got[0].LineNum != 1 {
+		t.Errorf("res = %+v, matches = %+v; want only the line-1 match", res, got)
+	}
+	if stream.n > 128<<10 {
+		t.Errorf("read %d bytes, want the read to stop right after the first match", stream.n)
+	}
+}
+
+type countingReader struct {
+	r io.Reader
+	n int
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += n
+	return n, err
+}
+
+// FR-6: without emit the matches are still counted (-c).
+func TestProcessObject_CountsWithoutEmit(t *testing.T) {
+	res := ProcessObject(strings.NewReader("timeout\nINFO\ntimeout\n"), mustMatcher(t, "timeout", false), Options{}, nil)
+	if res.MatchCount != 2 {
+		t.Errorf("MatchCount = %d, want 2", res.MatchCount)
+	}
+}

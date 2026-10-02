@@ -35,6 +35,20 @@ const (
 	DefaultMaxTotalSize  = 2 << 30   // 2 GiB
 )
 
+// Mode is what a run prints for each object.
+type Mode int
+
+const (
+	// ModeLines prints every matching line as object:line:text (FR-3).
+	ModeLines Mode = iota
+	// ModeFilesWithMatches prints the name of each object with a match and
+	// stops reading it at the first match (FR-5, `-l`).
+	ModeFilesWithMatches
+	// ModeCount prints object:count for each object read completely (FR-6,
+	// `-c`).
+	ModeCount
+)
+
 // Config controls a single scan run.
 type Config struct {
 	Bucket string
@@ -52,6 +66,9 @@ type Config struct {
 	// MaxTotalSize is BR-5's limit, in bytes of decompressed content read in
 	// the whole run. Zero disables it (`--max-total-size 0`).
 	MaxTotalSize int64
+
+	// Mode selects the output (the zero value is ModeLines).
+	Mode Mode
 }
 
 // Run lists objects under cfg.Bucket/cfg.Prefix (FR-1, FR-2, FR-18),
@@ -127,9 +144,14 @@ func scanObject(ctx context.Context, client gcsclient.Client, cfg Config, budget
 		MaxObjectSize: cfg.MaxObjectSize,
 		Budget:        budget,
 	}
-	res := reader.ProcessObject(stream, m, opts, func(lm reader.LineMatch) {
-		w.Match(name, lm.LineNum, lm.Text)
-	})
+	var emit func(reader.LineMatch)
+	switch cfg.Mode {
+	case ModeLines:
+		emit = func(lm reader.LineMatch) { w.Match(name, lm.LineNum, lm.Text) }
+	case ModeFilesWithMatches:
+		opts.StopAtFirstMatch = true // FR-5
+	}
+	res := reader.ProcessObject(stream, m, opts, emit)
 
 	out := objectResult{matched: res.MatchCount > 0}
 	if res.Skipped {
@@ -138,6 +160,9 @@ func scanObject(ctx context.Context, client gcsclient.Client, cfg Config, budget
 	}
 	if res.LongLineWarn {
 		w.Warning("%s: skipped lines longer than 1 MiB", name) // FR-15
+	}
+	if cfg.Mode == ModeFilesWithMatches && res.MatchCount > 0 {
+		w.ObjectName(name) // FR-5
 	}
 	switch {
 	case res.ScanIncomplete:
@@ -151,6 +176,10 @@ func scanObject(ctx context.Context, client gcsclient.Client, cfg Config, budget
 	case res.Failed:
 		w.Warning("%s: %s", name, res.FailReason) // FR-9.2, NFR-3
 		out.failed = true
+	default:
+		if cfg.Mode == ModeCount {
+			w.Count(name, res.MatchCount) // FR-6: only for an object read completely
+		}
 	}
 	return out
 }

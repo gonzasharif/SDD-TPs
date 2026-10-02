@@ -83,6 +83,10 @@ type Options struct {
 	// MaxObjectSize is BR-4's limit in bytes (0 means none).
 	MaxObjectSize int64
 
+	// StopAtFirstMatch ends the read at the first matching line (FR-5, `-l`):
+	// the rest of the object is not read.
+	StopAtFirstMatch bool
+
 	// Budget is the bytes counter of the run, for BR-5 (nil means none).
 	Budget *Budget
 }
@@ -134,6 +138,9 @@ func ProcessObject(stream io.Reader, m *match.Matcher, opts Options, emit func(L
 			res.MatchCount++
 			if emit != nil {
 				emit(LineMatch{LineNum: lineNum, Text: line})
+			}
+			if opts.StopAtFirstMatch {
+				return res
 			}
 		}
 	}

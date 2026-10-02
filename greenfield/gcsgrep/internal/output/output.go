@@ -29,6 +29,18 @@ func (w *Writer) Match(object string, lineNum int, line string) {
 	fmt.Fprintf(w.Stdout, "%s:%d:%s\n", object, lineNum, line)
 }
 
+// ObjectName prints just an object's name: `-l` output for an object with at
+// least one match (FR-5).
+func (w *Writer) ObjectName(object string) {
+	fmt.Fprintf(w.Stdout, "%s\n", object)
+}
+
+// Count prints `object:count`: `-c` output for an object read completely
+// (FR-6).
+func (w *Writer) Count(object string, count int) {
+	fmt.Fprintf(w.Stdout, "%s:%d\n", object, count)
+}
+
 // Warning prints an aviso ("gcsgrep: warning: ..."): a condition the run
 // recovers from and continues past (FR-9, FR-11, FR-15, FR-17).
 func (w *Writer) Warning(format string, args ...any) {

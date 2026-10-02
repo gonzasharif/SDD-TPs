@@ -1,5 +1,6 @@
-// Package cli parses gcsgrep's argv into a structured Args value. Iteration
-// 1's surface is: gcsgrep [-i] [-n] [--max N] PATTERN gs://bucket[/prefix].
+// Package cli parses gcsgrep's argv into a structured Args value:
+// gcsgrep [-i] [-n] [-l | -c] [--max N] [--max-object-size N]
+// [--max-total-size N] PATTERN gs://bucket[/prefix].
 //
 // Every error Parse returns is a usage error (exit code 2) whose message is
 // meant to follow the "gcsgrep: error: " prefix (FR-16.1, FR-22).
@@ -28,6 +29,8 @@ type Args struct {
 	// (0 disables them).
 	MaxObjectSize int64
 	MaxTotalSize  int64
+	// Mode is the output selected by -l or -c (ModeLines without either).
+	Mode scanner.Mode
 }
 
 // Parse parses argv (os.Args[1:]) into Args.
@@ -36,6 +39,8 @@ func Parse(argv []string) (Args, error) {
 	fs.SetOutput(io.Discard)
 
 	ignoreCase := fs.Bool("i", false, "case-insensitive search")
+	filesWithMatches := fs.Bool("l", false, "print only the names of the objects with a match")
+	count := fs.Bool("c", false, "print the number of matching lines of each object")
 	// -n is accepted with no effect: the output format always includes the
 	// line number (FR-20, decision #4 in gcsgrep-design.md).
 	fs.Bool("n", true, "show line numbers (always on)")
@@ -48,6 +53,10 @@ func Parse(argv []string) (Args, error) {
 
 	if err := fs.Parse(argv); err != nil {
 		return Args{}, translateFlagError(err, maxObjects, maxObjectSize, maxTotalSize)
+	}
+
+	if *filesWithMatches && *count {
+		return Args{}, errors.New("-l and -c cannot be used together") // FR-7
 	}
 
 	rest := fs.Args()
@@ -69,7 +78,20 @@ func Parse(argv []string) (Args, error) {
 
 		MaxObjectSize: maxObjectSize.value,
 		MaxTotalSize:  maxTotalSize.value,
+		Mode:          outputMode(*filesWithMatches, *count),
 	}, nil
+}
+
+// outputMode is the Mode for the -l and -c flags (never both: FR-7).
+func outputMode(filesWithMatches, count bool) scanner.Mode {
+	switch {
+	case filesWithMatches:
+		return scanner.ModeFilesWithMatches
+	case count:
+		return scanner.ModeCount
+	default:
+		return scanner.ModeLines
+	}
 }
 
 // parseLocation parses gs://bucket/prefix (FR-1, FR-2). Only the gs://

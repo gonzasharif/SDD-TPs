@@ -30,3 +30,25 @@ func TestRun_SizeLimitFlagsAreApplied(t *testing.T) {
 		t.Errorf("defaults: code = %d, stderr = %q; want a complete read", defaults.code, defaults.stderr)
 	}
 }
+
+// VC-7 / FR-7: -l with -c is a usage error that never reaches GCS.
+func TestRun_FilesWithMatchesAndCountNeverTouchGCS(t *testing.T) {
+	got := runWith(logsData(), nil, "-l", "-c", "timeout", "gs://b/logs/")
+
+	if got.code != 2 || got.stdout != "" || got.stderr != "gcsgrep: error: -l and -c cannot be used together\n" {
+		t.Errorf("code=%d stdout=%q stderr=%q; want 2, empty stdout and the literal error", got.code, got.stdout, got.stderr)
+	}
+	if got.factoryCalls != 0 || got.gcsCalls != 0 {
+		t.Errorf("client created %d times, GCS called %d times; want 0 and 0", got.factoryCalls, got.gcsCalls)
+	}
+}
+
+// FR-5, FR-6: the flags reach the scanner.
+func TestRun_OutputModes(t *testing.T) {
+	if got := runWith(logsData(), nil, "-l", "timeout", "gs://b/logs/"); got.stdout != "logs/a.log\n" || got.code != 0 {
+		t.Errorf("-l: code=%d stdout=%q; want 0 and %q", got.code, got.stdout, "logs/a.log\n")
+	}
+	if got := runWith(logsData(), nil, "-c", "timeout", "gs://b/logs/"); got.stdout != "logs/a.log:1\nlogs/b.log:0\n" || got.code != 0 {
+		t.Errorf("-c: code=%d stdout=%q; want 0 and both counts", got.code, got.stdout)
+	}
+}

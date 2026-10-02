@@ -1,6 +1,10 @@
 package cli
 
-import "testing"
+import (
+	"testing"
+
+	"gcsgrep/internal/scanner"
+)
 
 // FR-1/FR-2/FR-18: gs://bucket/prefix and gs://bucket/ (no prefix) both
 // parse; a prefix without a trailing slash is kept as-is (name filter).
@@ -156,6 +160,40 @@ func TestParse_SizeLimitsRejectInvalidValues(t *testing.T) {
 			if err == nil || err.Error() != tc.want {
 				t.Errorf("Parse(%s %s) error = %v, want %q", flagName, tc.value, err, tc.want)
 			}
+		}
+	}
+}
+
+// FR-5, FR-6: -l and -c select the output mode; without them it is lines.
+func TestParse_OutputMode(t *testing.T) {
+	cases := []struct {
+		argv []string
+		want scanner.Mode
+	}{
+		{[]string{"timeout", "gs://logs/"}, scanner.ModeLines},
+		{[]string{"-l", "timeout", "gs://logs/"}, scanner.ModeFilesWithMatches},
+		{[]string{"-c", "timeout", "gs://logs/"}, scanner.ModeCount},
+	}
+	for _, tc := range cases {
+		args, err := Parse(tc.argv)
+		if err != nil {
+			t.Fatalf("Parse(%v): %v", tc.argv, err)
+		}
+		if args.Mode != tc.want {
+			t.Errorf("Parse(%v).Mode = %v, want %v", tc.argv, args.Mode, tc.want)
+		}
+	}
+}
+
+// FR-7: -l and -c together, in either order, are a usage error.
+func TestParse_FilesWithMatchesAndCountAreExclusive(t *testing.T) {
+	for _, argv := range [][]string{
+		{"-l", "-c", "timeout", "gs://logs/"},
+		{"-c", "-l", "timeout", "gs://logs/"},
+	} {
+		_, err := Parse(argv)
+		if err == nil || err.Error() != "-l and -c cannot be used together" {
+			t.Errorf("Parse(%v) error = %v, want %q", argv, err, "-l and -c cannot be used together")
 		}
 	}
 }

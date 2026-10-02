@@ -299,16 +299,36 @@ func TestVC30_2_LastLineWithoutNewline(t *testing.T) {
 	expect(t, run(t, "timeout", loc("n/")), 0, "n/last.log:2:dos timeout\n", "")
 }
 
-// openCounter wraps the real client and records which objects are opened
-// (VC-19 asserts the exact number of openings).
+// openCounter wraps the real client and records which objects are opened and
+// how many bytes are read from each (VC-5 and VC-19).
 type openCounter struct {
 	gcsclient.Client
 	opened []string
+	// bytesRead is how many bytes the scan took from each object's stream.
+	bytesRead map[string]int64
 }
 
 func (c *openCounter) Open(ctx context.Context, bucket, object string) (io.ReadCloser, error) {
 	c.opened = append(c.opened, object)
-	return c.Client.Open(ctx, bucket, object)
+	rc, err := c.Client.Open(ctx, bucket, object)
+	if err != nil {
+		return nil, err
+	}
+	if c.bytesRead == nil {
+		c.bytesRead = map[string]int64{}
+	}
+	return &countingReadCloser{ReadCloser: rc, n: func(k int) { c.bytesRead[object] += int64(k) }}, nil
+}
+
+type countingReadCloser struct {
+	io.ReadCloser
+	n func(int)
+}
+
+func (c *countingReadCloser) Read(p []byte) (int, error) {
+	k, err := c.ReadCloser.Read(p)
+	c.n(k)
+	return k, err
 }
 
 // runCounting is run with a client that counts object openings.
@@ -378,4 +398,35 @@ func TestVC19_TotalSizeGuardrail(t *testing.T) {
 		t.Errorf("openings = %v, want exactly 3", counter.opened)
 	}
 	expectStderrLine(t, r, "gcsgrep: error: total size limit of 2621440 bytes reached, scan incomplete")
+}
+
+func TestVC5_FilesWithMatchesStopsReading(t *testing.T) {
+	r, counter := runCounting(t, "-l", "timeout", loc("l/"))
+	if r.code != 0 || r.stdout != "l/big.log\n" || r.stderr != "" {
+		t.Errorf("exit %d, stdout %q, stderr %q; want 0, %q and empty stderr", r.code, r.stdout, r.stderr, "l/big.log\n")
+	}
+	if got := counter.bytesRead["l/big.log"]; got == 0 || got > 1048576 {
+		t.Errorf("bytes read from l/big.log = %d, want between 1 and 1048576 (of 100 MiB)", got)
+	}
+}
+
+func TestVC6_CountMatches(t *testing.T) {
+	expect(t, run(t, "-c", "timeout", loc("c/")), 0, "c/none.log:0\nc/three.log:3\n", "")
+}
+
+func TestVC7_FilesWithMatchesAndCountAreExclusive(t *testing.T) {
+	created := false
+	factory := func(ctx context.Context) (gcsclient.Client, error) {
+		created = true
+		return gcsclient.New(ctx)
+	}
+	var stdout, stderr bytes.Buffer
+	code := app.Run(context.Background(), []string{"-l", "-c", "timeout", loc("logs/")}, &stdout, &stderr, factory)
+
+	if code != 2 || stdout.String() != "" || stderr.String() != "gcsgrep: error: -l and -c cannot be used together\n" {
+		t.Errorf("exit %d, stdout %q, stderr %q; want 2, empty stdout and the literal error", code, stdout.String(), stderr.String())
+	}
+	if created {
+		t.Errorf("the GCS client was created; no GCS call is allowed")
+	}
 }
