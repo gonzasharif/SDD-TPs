@@ -65,6 +65,22 @@ y se leyó el manejo del `NULL`); `cmd-display-menu.c:498` → `:499`; `spawn.c:
 | VC-1…VC-54 definidos una sola vez | Sí (contado con `grep`) |
 | Referencias `archivo:línea` nuevas | Releídas contra un clon de `tmux` en `5a820e63` |
 | Casos mínimos: auth rechazada, sesión que no abre, build no-Linux, comando existente | VC-28, VC-40, VC-47, VC-48/VC-51 |
+| Cada VC se puede correr en la iteración que lo cierra | Corregido (ver abajo) |
+
+### Hallazgo: VCs que el plan cerraba antes de poder correrlos
+
+Al revisar el plan contra los VCs aparecieron VCs asignados a iteraciones donde no se podían
+ejercitar:
+
+| VC | Iteración | Problema | Resolución |
+|---|---|---|---|
+| VC-19 | 2 | "llega al prompt remoto" necesita auth (3) y shell (4) | Observa la línea `Connection from … port $PORT` del log de `sshd` |
+| VC-16, VC-17 | 2 | piden el hijo vivo, pero en la 2 el cliente solo conecta y sale: carrera con `ps` y `/proc` | Corren contra el listener mudo, que mantiene vivo al hijo hasta el timeout |
+| VC-52, VC-53 | 2 | dependían de la sesión del VC-31, que cierra en la 4 | En la 2 se corren con la conexión colgada; se repiten con la sesión en la 4 |
+| VC-23, VC-24, VC-25, VC-27 | 3 | "llega al prompt remoto" necesita la shell de la 4 | Observan `Accepted publickey for $USER` en el log de `sshd` |
+
+El harness define ahora tres observables ("llega a `sshd`", "se autentica", "llega al
+prompt remoto") y dice qué iteración necesita cada uno.
 
 ### Lo que sigue abierto
 

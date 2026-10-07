@@ -110,10 +110,16 @@ Lo usan los VCs de red. Vive en `regress/new-ssh-window.sh`; el feature nunca lo
 - **`tmux` de prueba** con `-f/dev/null`, `remain-on-exit on` (para leer la pantalla y
   `#{pane_dead_status}` de un pane que ya terminó) y el entorno de sesión con `HOME=$H`.
   El server se lanza **bajo `strace`**: `strace -f -o $TRACE -e trace=execve,connect tmux … new-session -d`.
-- **Listener mudo:** `nc -l 127.0.0.1 $MUTE`, que acepta la conexión TCP y nunca manda el
-  banner SSH. Sirve para tener una conexión colgada de forma determinista.
+- **Listener mudo:** `nc -lk 127.0.0.1 $MUTE`, que acepta conexiones TCP y nunca manda el
+  banner SSH. Sirve para tener una conexión colgada de forma determinista: el hijo del pane
+  queda vivo hasta el timeout de FR-37 (15 s), aunque el cliente todavía no autentique.
+  `$M` = `$USER@127.0.0.1` con `-p $MUTE`.
+- "**Llega a `sshd`**" significa: `$SSHD_LOG` contiene
+  `Connection from 127.0.0.1 port <n> on 127.0.0.1 port $PORT`. No requiere autenticación.
+- "**Se autentica**" significa: `$SSHD_LOG` contiene `Accepted publickey for $USER`. No
+  requiere shell.
 - "**Llega al prompt remoto**" significa: tras `send-keys 'echo R-$((6*7))' Enter`,
-  `capture-pane -p` contiene la línea `R-42`.
+  `capture-pane -p` contiene la línea `R-42`. Requiere shell (Iteración 4).
 
 ## Requerimientos
 
@@ -257,7 +263,7 @@ Un comportamiento por FR. Cada FR tiene al menos un VC debajo.
 **entonces** llama a `spawn_window()` (`tmux.h:4195`) con `SPAWN_SSH` en `sc.flags`, y el
 pane se crea con el mismo `fdforkpty` (`spawn.c:478`) que cualquier otro.
 
-**VC-16:** tras `new-ssh-window -d -P -F '#{pane_pid} #{pane_tty}' $D`, el primer campo es un pid cuyo padre es el server (`ps -o ppid= -p <pane_pid>` igual a `display-message -p '#{pid}'`) y el segundo es un `/dev/pts/N` que existe.
+**VC-16:** tras `new-ssh-window -d -P -F '#{pane_pid} #{pane_tty}' $M` (el hijo queda vivo contra el listener mudo), el primer campo es un pid cuyo padre es el server (`ps -o ppid= -p <pane_pid>` igual a `display-message -p '#{pid}'`) y el segundo es un `/dev/pts/N` que existe.
 
 #### FR-17 · En el hijo, `ssh_client_run()` ocupa el lugar de los `exec`
 
@@ -266,7 +272,7 @@ pane se crea con el mismo `fdforkpty` (`spawn.c:478`) que cualquier otro.
 **entonces** un bloque `#ifdef ENABLE_NATIVE_SSH` llama a `ssh_client_run(argc, argv)` y hace
 `_exit` con su valor de retorno, sin llegar a `execvp`/`execl` (`spawn.c:552`, `:567`, `:574`).
 
-**VC-17:** con la sesión abierta, `readlink /proc/<pane_pid>/exe` es igual a `readlink /proc/<pid del server>/exe`: el proceso del pane es el binario `tmux`, no uno ejecutado con `exec`.
+**VC-17:** con el hijo colgado contra el listener mudo (`new-ssh-window -d $M`), `readlink /proc/<pane_pid>/exe` es igual a `readlink /proc/<pid del server>/exe`: el proceso del pane es el binario `tmux`, no uno ejecutado con `exec`.
 
 #### FR-18 · Contrato de `argv` entre el comando y el cliente
 
@@ -283,7 +289,7 @@ pane se crea con el mismo `fdforkpty` (`spawn.c:478`) que cualquier otro.
 **cuando** el cliente abre la conexión TCP,
 **entonces** usa el puerto de `-p`; si no hay `-p`, el 22.
 
-**VC-19:** con el `sshd` de prueba en `$PORT` distinto de 22, `new-ssh-window -d -p $PORT -i $H/.ssh/k $D` llega al prompt remoto.
+**VC-19:** con el `sshd` de prueba en `$PORT` distinto de 22, `new-ssh-window -d -p $PORT $D` llega a `sshd`.
 **VC-20:** tras `new-ssh-window -d 127.0.0.1` (sin `-p`), `$TRACE` contiene un `connect` del pid del pane con `sin_port=htons(22)`.
 
 ### Verificación del host
@@ -314,7 +320,7 @@ por `environ_for_session`, `environ.c:253`, y `environ_push`, `spawn.c:544`),
 **cuando** se conecta sin `-i`,
 **entonces** se autentica con una clave del agent.
 
-**VC-23:** con `set-environment SSH_AUTH_SOCK <socket>` de un agent que tiene la clave autorizada, y `$H/.ssh` sin ninguna clave, `new-ssh-window -d -p $PORT $D` llega al prompt remoto.
+**VC-23:** con `set-environment SSH_AUTH_SOCK <socket>` de un agent que tiene la clave autorizada, y `$H/.ssh` sin ninguna clave, `new-ssh-window -d -p $PORT $D` se autentica.
 
 #### FR-23 · Autenticación con la clave de `-i`
 
@@ -322,7 +328,7 @@ por `environ_for_session`, `environ.c:253`, y `environ_push`, `spawn.c:544`),
 **cuando** se pasa `-i ARCHIVO`,
 **entonces** se autentica con esa clave.
 
-**VC-24:** sin `SSH_AUTH_SOCK` en el entorno de la sesión, con la clave autorizada en `/tmp/<dir>/k` (fuera de `$H/.ssh`), `new-ssh-window -d -p $PORT -i /tmp/<dir>/k $D` llega al prompt remoto.
+**VC-24:** sin `SSH_AUTH_SOCK` en el entorno de la sesión, con la clave autorizada en `/tmp/<dir>/k` (fuera de `$H/.ssh`), `new-ssh-window -d -p $PORT -i /tmp/<dir>/k $D` se autentica.
 
 #### FR-24 · Autenticación con las claves por defecto
 
@@ -330,7 +336,7 @@ por `environ_for_session`, `environ.c:253`, y `environ_push`, `spawn.c:544`),
 **cuando** se conecta,
 **entonces** se prueba `$HOME/.ssh/id_ed25519` y después `$HOME/.ssh/id_rsa`.
 
-**VC-25:** con la clave autorizada en `$H/.ssh/id_ed25519`, sin `SSH_AUTH_SOCK` y sin `-i`, `new-ssh-window -d -p $PORT $D` llega al prompt remoto.
+**VC-25:** con la clave autorizada en `$H/.ssh/id_ed25519`, sin `SSH_AUTH_SOCK` y sin `-i`, `new-ssh-window -d -p $PORT $D` se autentica.
 
 #### FR-25 · El agent se prueba antes que los archivos de clave
 
@@ -347,7 +353,7 @@ por `environ_for_session`, `environ.c:253`, y `environ_push`, `spawn.c:544`),
 **entonces** escribe `Enter passphrase for key '<ruta>': ` en el tty del pane (el pty de
 `fdforkpty`, `spawn.c:478`) y lee la respuesta sin eco.
 
-**VC-27:** `capture-pane -p` contiene `Enter passphrase for key`; tras `send-keys '<passphrase>' Enter` se llega al prompt remoto, y `capture-pane -p` no contiene la passphrase.
+**VC-27:** `capture-pane -p` contiene `Enter passphrase for key`; tras `send-keys '<passphrase>' Enter` la sesión se autentica, y `capture-pane -p` no contiene la passphrase.
 
 #### FR-27 · No se ofrece autenticación por password
 
@@ -517,12 +523,14 @@ tras `new-window -d -P -F '#{pane_pid} #{pane_tty}' sleep 100`,
 `readlink /proc/<pane_pid>/exe` termina en `/sleep` (pasó por `execvp`, `spawn.c:552`), el
 tty es un `/dev/pts/N`, y `kill <pane_pid>` deja `#{pane_dead_signal}` en `15`.
 
-**VC-52 (INV-5):** tras una sesión completa del VC-31, `$TRACE` no contiene ninguna línea
-`execve` del pid del pane, y durante la sesión `pgrep -P <pane_pid>` no devuelve nada (el
-hijo no lanza procesos).
+**VC-52 (INV-5):** `$TRACE` no contiene ninguna línea `execve` del pid del pane, y mientras
+el hijo vive `pgrep -P <pane_pid>` no devuelve nada (el hijo no lanza procesos). Se corre
+con el hijo colgado contra el listener mudo (desde la Iteración 2) y otra vez tras una
+sesión completa del VC-31 (desde la Iteración 4).
 
 **VC-53 (INV-6):** `ls /proc/<pid del server>/task | wc -l` da el mismo número antes de
-crear el pane SSH, con la conexión colgada del VC-43 y con la sesión abierta del VC-31.
+crear el pane SSH y con la conexión colgada del VC-43 (desde la Iteración 2), y también con
+la sesión abierta del VC-31 (desde la Iteración 4).
 
 **VC-54 (INV-7):** `grep -c 'define SPAWN_SSH 0x2000' tmux.h` da `1`, y
 `grep -o 'SPAWN_[A-Z]* 0x[0-9a-f]*' tmux.h | awk '{print $2}' | sort | uniq -d` no imprime nada.
@@ -564,14 +572,20 @@ Cada iteración termina con la línea de base **sin** el flag igual a la inicial
 | Iteración | Alcance | Cierra |
 |---|---|---|
 | **1** | Guardas de build: `configure.ac`, `Makefile.am` y `regress/native-ssh-guard.sh`; dos fuentes nuevas vacías | FR-1 … FR-6 (VC-1 … VC-6), INV-1 (VC-46), INV-2 (VC-47) |
-| **2** | Comando, `SPAWN_SSH`, bloque en `spawn.c`, `ssh_client_run()` que solo conecta; **harness con `sshd` de prueba** | FR-7 … FR-19 (VC-7 … VC-20), FR-36, FR-37 (VC-38 … VC-40), NFR-1 (VC-43), INV-3 … INV-7 (VC-48 … VC-54, con VC-52 y VC-53 repetidos al cerrar la 3) |
+| **2** | Comando, `SPAWN_SSH`, bloque en `spawn.c`, `ssh_client_run()` que solo conecta; **harness con `sshd` de prueba y listener mudo** | FR-7 … FR-19 (VC-7 … VC-20), FR-36, FR-37 (VC-38 … VC-40), NFR-1 (VC-43), INV-3 … INV-7 (VC-48 … VC-54; VC-52 y VC-53 en su forma con la conexión colgada) |
 | **3** | Host key y autenticación | FR-20 … FR-27 (VC-21 … VC-28), BR-1 (VC-41) |
-| **4** | Sesión interactiva, resize y fin de sesión | FR-28 … FR-35 (VC-29 … VC-37), NFR-3 (VC-45) |
+| **4** | Sesión interactiva, resize y fin de sesión | FR-28 … FR-35 (VC-29 … VC-37), NFR-3 (VC-45); VC-52 y VC-53 otra vez, ahora con la sesión del VC-31 |
 | **5** | `tmux.1` y entrada de CI | NFR-2 (VC-44), BR-2 (VC-42) |
 
 La Iteración 1 es el camino más angosto que se puede verificar solo: no hay código C con
 lógica y prueba el límite solo-Linux completo. El `sshd` de prueba aparece en la Iteración
 2, no al final, para que ningún VC de red quede sin forma de ejercitarse.
+
+Cada VC se puede correr en la iteración que lo cierra. Los de la Iteración 2 no dependen de
+autenticar: observan la llegada a `sshd` en su log (VC-19) o un hijo que sigue vivo contra
+el listener mudo (VC-16, VC-17, VC-52, VC-53). Los de la Iteración 3 observan
+`Accepted publickey` en el log de `sshd`, no el prompt remoto, que necesita la shell de la
+Iteración 4.
 
 ## Decisiones
 
