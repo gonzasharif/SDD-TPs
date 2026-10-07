@@ -1,0 +1,7 @@
+$ # 1. No es un commit: pasa sin correr tests
+$ echo {"tool_input":{"command":"git status"}} | tests-green-before-commit.sh
+exit=0
+
+$ # 2. Commit con la suite en verde: pasa
+$ echo {"tool_input":{"command":"git commit -m \"x\""}} | tests-green-before-commit.sh
+exit=0

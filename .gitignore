@@ -3,3 +3,6 @@
 /greenfield/gcsgrep/gcsgrep
 
 .idea
+/go*.linux-amd64.tar.gz
+/gcsgrep/
+.claude/settings.local.json
