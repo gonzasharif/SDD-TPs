@@ -12,11 +12,10 @@ $ check-vc-coverage.sh --strict old-spec.md | sort | uniq -c | sort -rn | head -
       1 FAIL: a VC points to FR-43, which does not exist
       1 FAIL: a VC points to FR-42, which does not exist
       1 FAIL: a VC points to FR-41, which does not exist
-exit=1
 
 $ # 2. La spec actual: pasa, incluso en modo estricto
 $ check-vc-coverage.sh --strict brownfield/spec-brownfield.md
-OK: 82 VCs for 70 requirements; every requirement has a VC and closes in exactly one iteration
+OK: 95 VCs for 76 requirements; every requirement has a VC and closes in exactly one iteration
 exit=0
 
 $ # 3. Copia rota: se borran los dos VCs de INV-3 (VC-INV3.1 y VC-INV3.2)
@@ -24,11 +23,11 @@ FAIL: INV-3 has no VC
 exit=1
 
 $ # 4. Copia rota: un FR con dos "cuando" y una decision con wording de TBD
-FAIL: FR-12 has 2 "cuando" (needs exactly 1)
-FAIL: TBD-style wording at line 803: - **Licencia: a confirmar.** **Nombres de las funciones de `libssh`:** la spec fija la ver
+FAIL: FR-14 has 2 "cuando" (needs exactly 1)
+FAIL: TBD-style wording at line 856: - **Licencia: a confirmar.** **Funciones de `libssh`:** las elige `ssh-client.c`; la spec 
 exit=1
 
 $ # 5. Copia rota: se saca un requisito del plan y se quita la columna "Descartado"
-FAIL: BR-2 is not in any iteration
+FAIL: BR-4 is not in any iteration
 FAIL: '## Decisiones' has no 'Descartado' column (chosen / grounds / discarded)
 exit=1

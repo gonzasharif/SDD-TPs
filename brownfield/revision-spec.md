@@ -5,6 +5,37 @@
 > la spec**, **cobertura de VCs** y **disciplina de alcance** (límite solo-Linux e
 > invariantes). Los huecos se corrigieron en la spec; este documento deja el registro.
 
+## Cuarta iteración — tras la revisión independiente
+
+Una primera pasada del `spec-reviewer` sobre la tercera iteración dio **MAJOR ISSUES** (dimensiones 2, 3, 4 y 5 en FAIL). La spec se **renumeró** otra vez: FR-1…FR-62, BR-1…BR-4, NFR-1…NFR-3 e INV-1…INV-7; 95 VCs.
+
+| Hallazgo | Resolución |
+|---|---|
+| 2.1 · VC-7.1 exigía `ssh_client_run` en la Iteración 1, que tenía "fuentes vacías" | La Iteración 1 incluye `ssh_client_run()` como esqueleto que devuelve `1` |
+| 3.1 · VCs sin comando o con placeholder (33.1, 42.1, 43.1, 53.1, 56.1) | Cada uno trae `new-ssh-window …` y la espera al pane; `$SSHD_PID` y `$FREE` en el harness |
+| 3.1 · VC-BR1.1 fallaba por construcción: `tmux -vv` loguea los argumentos de `send-keys` (`cmd.c:249`) | La passphrase se inyecta con `load-buffer` + `paste-buffer` |
+| 3.2 · VC-34.1 obligaba a decidir comando, espera y estado | Comando y espera explícitos en el VC |
+| 4.1 · NFR-2 sin número | Una sinopsis idéntica al `.usage` y al menos una mención de `--enable-native-ssh`, medidas con `man -l` |
+| 4.2 · NFR-3 no verificaba "sin perder ni duplicar" y `history-limit` es 2000 | `history-limit 250000`; el VC cuenta 200000 líneas y 0 duplicadas |
+| 4.3 · NFR-1/3 sin aclarar `strace` | El server corre sin `strace` en los VCs de tiempo |
+| 5.1 · Cuatro decisiones menores sin código | Citas: `spawn.c:541`, `client.c:126`, `proc.c:227`, `options-table.c:845-851`, `server.c:491-499` |
+| 5.3 · Contradicción sobre funciones de `libssh` | Solo se cita `ssh_session_is_known_server` (lectura); la spec fija la versión, no las funciones |
+| 2.2 · FR-6 y FR-7 con resultados alternativos | Se partieron: FR-6/FR-7 (`off`/`on`), FR-8/FR-9 (con y sin flag) |
+| 2.5 · Comportamientos solo en el VC | Pasaron al Entonces (FR-29, FR-55, FR-59) o se quitaron del VC |
+| 3.3 – 3.7 · Bordes de entrada | FR-23 amplía el destino mal formado (`@h`, `a@b@c`, espacios); FR-25 ruta de clave no absoluta; FR-41 clave por defecto ilegible; FR-49 archivo que no es clave; VC de `known_hosts` inexistente y sin `\n` final |
+| 3.8 · `native-ssh-guard.sh` | Se define cómo elige qué VC correr; `regress/list-commands.base` versionado; VC-5.1 corre en una copia del árbol |
+| 5.2 · Herramientas del harness | Versiones y paquetes de CI nombrados |
+| 6.1 · Alias sin fundamento | Decisión con `cmd-new-window.c:39` |
+| 6.2 · CI sin requisito | BR-4 |
+| B.2 · Línea de base sin medir | Medida: 171 `PASS` y 1 `FAIL` previo (`prompt-words-history.sh`) |
+| B.3 · INV-5 e INV-6 a medias | Cierran en la Iteración 4; sus VCs se parten (`.1` colgado, `.2` con sesión) |
+
+**No se aplicó** el hallazgo 2.3 (símbolos de `tmux` en 20 FR): en una spec brownfield esas citas
+son el fundamento que la cátedra pidió, no un mecanismo. Queda como decisión del equipo.
+
+**Sigue sin hacerse:** una segunda pasada independiente; el hash del commit de la entrega;
+los VCs de red, que necesitan la implementación.
+
 ## Tercera iteración — contra el resumen de correcciones
 
 Se releyó la spec contra `resumen-correcciones-sdd` (las tres correcciones recibidas). La
@@ -20,7 +51,7 @@ da el `spec-reviewer`. El chequeo mecánico (`check-vc-coverage.sh --strict`) sa
 | Caminos de falla sin FR ni VC | Sin clave, clave rechazada, passphrase incorrecta, `-p` inválido, `-i` inexistente o ilegible, destino vacío, `known_hosts` ilegible, precedencia | FR-21 … FR-25, FR-34, FR-41, FR-43, FR-44 con su VC |
 | Texto del error sin fijar | `<motivo>` de FR-36 sin definir; `<host>` ambiguo | FR-55 y FR-56 con texto literal; glosario define host, usuario y falla |
 | Decisiones sin "descartado" | La tabla tenía decisión y código, no las alternativas | Columna "Descartado y por qué"; decisiones nuevas: flags, exit code `1`, timeout de 15 s y umbrales de NFR |
-| TBD | "LGPL (a confirmar)", versión mínima de `libssh` sin fijar, línea de base "sin medir" | Mínimo `libssh >= 0.9.0` (FR-2, FR-4): en 0.9.0 `ssh_is_server_known` y `ssh_write_knownhost` ya están deprecadas en favor de `ssh_session_is_known_server` y `ssh_session_update_known_hosts`. Licencia sin "a confirmar". Línea de base medida (abajo) |
+| TBD | "LGPL (a confirmar)", versión mínima de `libssh` sin fijar, línea de base "sin medir" | Mínimo `libssh >= 0.9.0` (FR-2, FR-4): en 0.9.0 `ssh_is_server_known` y `ssh_write_knownhost` ya están deprecadas en favor de `ssh_session_is_known_server`. Licencia sin "a confirmar". Línea de base medida (abajo) |
 | NFR sin texto ni medición | NFR-3 solo existía en su VC; ningún VC nombraba cómo medir | NFR-1 y NFR-3 con umbral, condición y herramienta (`date +%s%N`) en el requisito y en el VC |
 | IDs de VC desalineados | FR-22 usaba VC-23, FR-36 usaba VC-38 | `VC-<n>.<k>` por requisito |
 | VCs atados al código | VC-8 y VC-41 hacían `grep` sobre fuentes | Se quitaron; VC-4 manual pasó a `VC-5.1` automático (`native-ssh-guard.sh`, build fuera del árbol) |
@@ -38,7 +69,8 @@ da el `spec-reviewer`. El chequeo mecánico (`check-vc-coverage.sh --strict`) sa
 `usage: %s %s` salen de `arguments.c:240` y `cmd.c:530`.
 
 **Línea de base medida** (build de `5a820e63` con `--enable-utf8proc`): `make` sale con `0`;
-`tmux list-commands` imprime **92** líneas; `regress/` tiene **172** scripts `*.sh`.
+`tmux list-commands` imprime **92** líneas; `regress/` tiene **172** scripts `*.sh` (171 `PASS` y 1 `FAIL`
+previo, medido en la cuarta iteración).
 
 ### Lo que sigue sin hacerse
 

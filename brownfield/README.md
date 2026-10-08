@@ -15,8 +15,8 @@ Los documentos, en orden de pipeline:
 | # | Archivo | Paso SDD | Qué contiene |
 |---|---|---|---|
 | 1 | [`notas-exploracion.md`](notas-exploracion.md) | Descubrir | Cómo un pane lanza su proceso hoy, cómo se aísla lo específico de plataforma, el event loop, riesgos y la historia de compat/build, con archivos y funciones reales |
-| 2 | [`spec-brownfield.md`](spec-brownfield.md) | Especificar | El comando `new-ssh-window`, el límite solo-Linux, alcance dentro y fuera por path, glosario, 7 invariantes, 57 FR atómicos más 3 BR y 3 NFR, 82 VCs (`VC-<n>.<k>` alineados con cada requisito, e invariantes con VC propio), decisiones con elegido / fundamento en código / descartado y un plan de 5 iteraciones |
-| 3 | [`revision-spec.md`](revision-spec.md) | Revisar | Los 14 huecos de la primera revisión, la segunda iteración tras la corrección de la cátedra (VE-3, VE-4, VE-5) y la tercera, contra el resumen de correcciones. Sin veredicto propio: lo da el `spec-reviewer` |
+| 2 | [`spec-brownfield.md`](spec-brownfield.md) | Especificar | El comando `new-ssh-window`, el límite solo-Linux, alcance dentro y fuera por path, glosario, 7 invariantes, 62 FR atómicos más 4 BR y 3 NFR, 95 VCs (`VC-<n>.<k>` alineados con cada requisito, e invariantes con VC propio), decisiones con elegido / fundamento en código / descartado y un plan de 5 iteraciones |
+| 3 | [`revision-spec.md`](revision-spec.md) | Revisar | Los 14 huecos de la primera revisión, la segunda iteración tras la corrección de la cátedra (VE-3, VE-4, VE-5) y la tercera, contra el resumen de correcciones, y la cuarta, tras la revisión independiente. Sin veredicto propio: lo da el `spec-reviewer` |
 
 La consigna original no se copia acá: es el enunciado de la Lección 2 de la cátedra.
 
@@ -67,12 +67,11 @@ función son lo estable.
 
 ## Estado
 
-- **Descubrir y Especificar: hechos**, con tres iteraciones de la spec (la primera obtuvo
+- **Descubrir y Especificar: hechos**, con cuatro iteraciones de la spec (la primera obtuvo
   5,5/10). Ver `revision-spec.md`.
 - **Revisión independiente:** la pasa el `spec-reviewer`, no quien escribió la spec.
 - **Medido sobre `5a820e63`:** el build compila, `list-commands` da 92 líneas y `regress/` tiene
-  172 scripts. La corrida completa de `regress/` tarda varios minutos y no se completó acá: la
-  hace quien implemente antes de la Iteración 1.
+  172 scripts: 171 `PASS` y 1 `FAIL` previo (`prompt-words-history.sh`).
 - **Fuera del alcance de la spec:** los VCs de red necesitan la implementación y el harness
   (`sshd`, `strace`); no se ejecutaron.
 
