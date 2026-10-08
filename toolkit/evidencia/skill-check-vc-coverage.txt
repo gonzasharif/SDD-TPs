@@ -15,7 +15,7 @@ $ check-vc-coverage.sh --strict old-spec.md | sort | uniq -c | sort -rn | head -
 
 $ # 2. La spec actual: pasa, incluso en modo estricto
 $ check-vc-coverage.sh --strict brownfield/spec-brownfield.md
-OK: 95 VCs for 76 requirements; every requirement has a VC and closes in exactly one iteration
+OK: 99 VCs for 76 requirements; every requirement has a VC and closes in exactly one iteration
 exit=0
 
 $ # 3. Copia rota: se borran los dos VCs de INV-3 (VC-INV3.1 y VC-INV3.2)

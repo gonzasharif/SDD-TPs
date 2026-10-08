@@ -7,7 +7,7 @@
 
 ## Cuarta iteración — tras la revisión independiente
 
-Una primera pasada del `spec-reviewer` sobre la tercera iteración dio **MAJOR ISSUES** (dimensiones 2, 3, 4 y 5 en FAIL). La spec se **renumeró** otra vez: FR-1…FR-62, BR-1…BR-4, NFR-1…NFR-3 e INV-1…INV-7; 95 VCs.
+Una primera pasada del `spec-reviewer` sobre la tercera iteración dio **MAJOR ISSUES** (dimensiones 2, 3, 4 y 5 en FAIL). La spec se **renumeró** otra vez: FR-1…FR-62, BR-1…BR-4, NFR-1…NFR-3 e INV-1…INV-7; 99 VCs.
 
 | Hallazgo | Resolución |
 |---|---|
@@ -33,7 +33,15 @@ Una primera pasada del `spec-reviewer` sobre la tercera iteración dio **MAJOR I
 **No se aplicó** el hallazgo 2.3 (símbolos de `tmux` en 20 FR): en una spec brownfield esas citas
 son el fundamento que la cátedra pidió, no un mecanismo. Queda como decisión del equipo.
 
-**Sigue sin hacerse:** una segunda pasada independiente; el hash del commit de la entrega;
+**Segunda pasada independiente** (MAJOR ISSUES, casi todo ejecutabilidad de VCs). Se aplicó:
+`env -i` y `sshd` de prueba documentados en el harness; `TEST_REQUIRE_SSHD` se quitó (el script
+falla si el comando está y falta `sshd`); VC-INV3.2 compara el conjunto de `PASS` con la línea de
+base y no usa el exit de `make`; VC-3.1 con wrapper de `pkg-config`; VC-34.3 con `known_hosts`
+sin `\n` final; VC-43.1 y VC-52.1 con quoting correcto; VC-NFR2.1 con `MANWIDTH=200`; glosario
+unificado (cliente `tmux`, cliente SSH, servidor `tmux`, `sshd`, clave por defecto utilizable);
+nuevos VC-23.6, VC-28.5, VC-47.2 y VC-49.2. Limitaciones: VC-5.1/VC-INV2.1 solo en máquina no Linux.
+
+**Sigue sin hacerse:** una tercera pasada independiente; el hash del commit de la entrega;
 los VCs de red, que necesitan la implementación.
 
 ## Tercera iteración — contra el resumen de correcciones

@@ -15,7 +15,7 @@ Los documentos, en orden de pipeline:
 | # | Archivo | Paso SDD | Qué contiene |
 |---|---|---|---|
 | 1 | [`notas-exploracion.md`](notas-exploracion.md) | Descubrir | Cómo un pane lanza su proceso hoy, cómo se aísla lo específico de plataforma, el event loop, riesgos y la historia de compat/build, con archivos y funciones reales |
-| 2 | [`spec-brownfield.md`](spec-brownfield.md) | Especificar | El comando `new-ssh-window`, el límite solo-Linux, alcance dentro y fuera por path, glosario, 7 invariantes, 62 FR atómicos más 4 BR y 3 NFR, 95 VCs (`VC-<n>.<k>` alineados con cada requisito, e invariantes con VC propio), decisiones con elegido / fundamento en código / descartado y un plan de 5 iteraciones |
+| 2 | [`spec-brownfield.md`](spec-brownfield.md) | Especificar | El comando `new-ssh-window`, el límite solo-Linux, alcance dentro y fuera por path, glosario, 7 invariantes, 62 FR atómicos más 4 BR y 3 NFR, 99 VCs (`VC-<n>.<k>` alineados con cada requisito, e invariantes con VC propio), decisiones con elegido / fundamento en código / descartado y un plan de 5 iteraciones |
 | 3 | [`revision-spec.md`](revision-spec.md) | Revisar | Los 14 huecos de la primera revisión, la segunda iteración tras la corrección de la cátedra (VE-3, VE-4, VE-5) y la tercera, contra el resumen de correcciones, y la cuarta, tras la revisión independiente. Sin veredicto propio: lo da el `spec-reviewer` |
 
 La consigna original no se copia acá: es el enunciado de la Lección 2 de la cátedra.
