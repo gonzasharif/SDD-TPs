@@ -7,7 +7,7 @@
 
 ## Cuarta iteración — tras la revisión independiente
 
-Una primera pasada del `spec-reviewer` sobre la tercera iteración dio **MAJOR ISSUES** (dimensiones 2, 3, 4 y 5 en FAIL). La spec se **renumeró** otra vez: FR-1…FR-62, BR-1…BR-4, NFR-1…NFR-3 e INV-1…INV-7; 99 VCs.
+Una primera pasada del `spec-reviewer` sobre la tercera iteración dio **MAJOR ISSUES** (dimensiones 2, 3, 4 y 5 en FAIL). La spec se **renumeró** otra vez: FR-1…FR-62, BR-1…BR-4, NFR-1…NFR-3 e INV-1…INV-7; 100 VCs.
 
 | Hallazgo | Resolución |
 |---|---|
@@ -41,7 +41,17 @@ sin `\n` final; VC-43.1 y VC-52.1 con quoting correcto; VC-NFR2.1 con `MANWIDTH=
 unificado (cliente `tmux`, cliente SSH, servidor `tmux`, `sshd`, clave por defecto utilizable);
 nuevos VC-23.6, VC-28.5, VC-47.2 y VC-49.2. Limitaciones: VC-5.1/VC-INV2.1 solo en máquina no Linux.
 
-**Sigue sin hacerse:** una tercera pasada independiente; el hash del commit de la entrega;
+**Tercera pasada independiente** (sesión real, `toolkit/evidencia/sesion-subagent.md`): NEEDS WORK,
+con un solo Issue (3.1: VCs de autenticación sin datos fijados). Se aplicó: formato de `known_hosts`
+(`[127.0.0.1]:$PORT`, `ssh-keyscan`) y término "host conocido" en el glosario; `$PASS` como passphrase de
+la clave protegida; VC-46.1 con su propia configuración de `sshd` (ya no contradice la base); medición de
+tiempos en el harness (`t0`/`t1` con `date +%s%N`, consulta cada 100 ms) para VC-55.1, VC-59.1 y VC-NFR3.1;
+VC-58.1 con una sola sesión y `pgrep -n`; VC-35.2 (`known_hosts` inexistente no se crea); referencia de
+BR-4 corregida. Las citas `server.c:468` y `window.c:597` coinciden con el commit `5a820e63`; la diferencia
+era con las notas. **Quedan** como warnings: mecanismos en FR (decisión del equipo), usuario por defecto,
+`-t :N` ocupado, precedencia entre fallas de ejecución, `-i` a un directorio, connect TCP que no completa.
+
+**Sigue sin hacerse:** el hash del commit de la entrega;
 los VCs de red, que necesitan la implementación.
 
 ## Tercera iteración — contra el resumen de correcciones
