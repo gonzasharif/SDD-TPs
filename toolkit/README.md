@@ -112,13 +112,14 @@ Ya está instalado en este repo. Para llevarlo a otro, copien `.claude/` y fusio
 | Hook | [`evidencia/hook-manual-bloqueo.txt`](evidencia/hook-manual-bloqueo.txt) | Con una regresión en `-i` (FR-4) fallan `TestMatchString_IgnoreCase` y `TestRun_IgnoreCase`: **commit vetado** (`exit 2`) |
 | Hook | [`evidencia/hook-sin-jq.txt`](evidencia/hook-sin-jq.txt) | Sin `jq` el hook sigue **vetando** un commit con la suite roja (`exit 2`) y deja pasar uno en verde |
 | Skill | [`evidencia/skill-check-vc-coverage.txt`](evidencia/skill-check-vc-coverage.txt) | El script rechaza la spec anterior (sin VC por invariante, sin decisiones con "Descartado"), aprueba la actual, y rechaza copias rotas |
-| Skill | `evidencia/sesion-skill.md` | Sesión donde el skill carga **sin nombrarlo** |
-| Subagent | `evidencia/sesion-subagent.md` | Sesión donde `spec-reviewer` revisa `brownfield/spec-brownfield.md` y devuelve solo el veredicto |
-| Hook | `evidencia/sesion-hook.md` | Sesión donde el agente intenta commitear con un test roto, el hook lo veta y el agente arregla el código |
+| Skill | [`evidencia/sesion-skill.md`](evidencia/sesion-skill.md) | Sesión real donde `write-spec-brownfield` carga **sin nombrarlo** |
+| Subagent | [`evidencia/sesion-subagent.md`](evidencia/sesion-subagent.md) | Sesión real donde `spec-reviewer` revisa `brownfield/spec-brownfield.md` y devuelve el veredicto en el formato fijo (NEEDS WORK) |
+| Hook | [`evidencia/sesion-hook.md`](evidencia/sesion-hook.md) | Sesión real donde el agente intenta commitear con `-i` roto: el hook veta el commit y nombra `TestMatchString_IgnoreCase` y `TestRun_IgnoreCase` |
 
-Las tres sesiones (`sesion-*.md`) se graban en una sesión real de Claude Code, no se
-simulan: **todavía no están en el repo**. Hasta que se graben, la evidencia ejecutada es la
-de los `.txt` de arriba.
+Las tres sesiones (`sesion-*.md`) son exports de sesiones reales de Claude Code, no
+simuladas. En la del hook el agente se detuvo tras el veto y preguntó cómo seguir: no se
+registró el arreglo posterior. `evidencia/hook-manual-bloqueo.txt` muestra el stderr
+completo del veto, que es el que le indica al agente que arregle el código y no el test.
 
 ### Cómo reproducir las sesiones
 
