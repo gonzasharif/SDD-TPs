@@ -15,8 +15,8 @@ Los documentos, en orden de pipeline:
 | # | Archivo | Paso SDD | Qué contiene |
 |---|---|---|---|
 | 1 | [`notas-exploracion.md`](notas-exploracion.md) | Descubrir | Cómo un pane lanza su proceso hoy, cómo se aísla lo específico de plataforma, el event loop, riesgos y la historia de compat/build, con archivos y funciones reales |
-| 2 | [`spec-brownfield.md`](spec-brownfield.md) | Especificar | El comando `new-ssh-window`, el límite solo-Linux, alcance dentro y fuera por path, 7 invariantes, FRs/BRs/NFRs con 21 VCs y un plan de 4 iteraciones |
-| 3 | [`revision-spec.md`](revision-spec.md) | Revisar | Los 14 huecos que encontró la revisión de la spec, cómo se resolvieron y el veredicto |
+| 2 | [`spec-brownfield.md`](spec-brownfield.md) | Especificar | El comando `new-ssh-window`, el límite solo-Linux, alcance dentro y fuera por path, 7 invariantes, 37 FR atómicos más BRs/NFRs, 54 VCs (uno o más por requisito e invariante), las 6 decisiones fundadas en código y un plan de 5 iteraciones |
+| 3 | [`revision-spec.md`](revision-spec.md) | Revisar | Los 14 huecos de la primera revisión, la segunda iteración tras la corrección de la cátedra (VE-3, VE-4, VE-5) y el veredicto |
 
 La consigna original no se copia acá: es el enunciado de la Lección 2 de la cátedra.
 
@@ -45,7 +45,7 @@ Se aplica en tres capas independientes, y un build sin el flag es idéntico al a
 ### Invariantes
 
 Los builds no-Linux siguen compilando, los comandos existentes no cambian y el modelo de
-PTY/panes tampoco. Cada invariante tiene en la spec su forma de comprobarlo.
+PTY/panes tampoco. Cada invariante tiene en la spec su VC numerado (VC-46 a VC-54).
 
 ## Cómo verificar las notas
 
@@ -67,10 +67,10 @@ función son lo estable.
 
 ## Estado
 
-- **Descubrir, Especificar y Revisar: hechos.** La revisión dio el veredicto "lista para
-  planificar".
+- **Descubrir, Especificar y Revisar: hechos**, con una segunda iteración de la spec tras
+  la corrección de la cátedra (5,5/10 en la primera entrega). Ver `revision-spec.md`.
 - **Quedan abiertos, sin bloquear:** la API y la versión mínima de `libssh` no se verificaron
-  (no están en el repo de `tmux`); el VC-17 es manual porque hay que correrlo en macOS o BSD; la
+  (no están en el repo de `tmux`); el VC-4 es manual porque hay que correrlo en macOS o BSD; la
   línea de base numérica no se midió porque no se compiló `tmux`.
 
 Tag de esta carpeta: `02-Brownfield`.

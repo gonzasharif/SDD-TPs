@@ -43,7 +43,7 @@ new-window / split-window / respawn-pane / display-menu / new-session
 ### 1 · De la tabla de comandos al spawn
 
 Cada comando es un `struct cmd_entry` (**`tmux.h:2056`**: `name`, `alias`, `args`, `usage`,
-`target`, `flags`, `exec`). Se registra en dos lugares de **`cmd.c`**: un
+`source`, `target`, `flags`, `exec`). Se registra en dos lugares de **`cmd.c`**: un
 `extern const struct cmd_entry` arriba y un puntero en `cmd_table[]` (**`cmd.c:123`**; por
 ejemplo `cmd_new_window_entry` en `:170`, `cmd_respawn_pane_entry` en `:182`,
 `cmd_split_window_entry` en `:206`). Ejemplo de entrada completa: **`cmd-split-window.c:58-73`**.
@@ -57,7 +57,7 @@ llaman a `spawn_window()` o `spawn_pane()` (prototipos en **`tmux.h:4195-4196`**
 | `new-session` | `spawn_window` — `cmd-new-session.c:305` |
 | `split-window` | `spawn_pane` — `cmd-split-window.c:208` |
 | `respawn-pane` | `spawn_pane` — `cmd-respawn-pane.c:83` |
-| `display-menu` | `spawn_pane` — `cmd-display-menu.c:498` |
+| `display-menu` | `spawn_pane` — `cmd-display-menu.c:499` |
 
 El contexto lleva `argv`/`argc` (el comando a correr), `environ`, `cwd` y `flags`
 (`SPAWN_KILL`, `SPAWN_DETACHED`, `SPAWN_RESPAWN`, `SPAWN_EMPTY`, `SPAWN_FLOATING`, etc.).
@@ -69,18 +69,19 @@ El contexto lleva `argv`/`argc` (el comando a correr), `environ`, `cwd` y `flags
 
 1. Arma el entorno del hijo (`environ_for_session`, `TMUX_PANE`, `PATH`, `SHELL`).
 2. Bloquea señales (`sigprocmask`) y arma el `winsize`.
-3. Si `SPAWN_EMPTY`, **no hace fork** (`spawn.c:458`): el pane queda vacío.
+3. Si `SPAWN_EMPTY`, **no hace fork** (`spawn.c:459`): el pane queda vacío.
 4. **`spawn.c:478`**: `new_wp->pid = fdforkpty(ptm_fd, &new_wp->fd, new_wp->tty, NULL, &ws)`.
    Esto crea el pty y el hijo de una vez; llena `wp->pid`, `wp->fd` (lado master) y
    `wp->tty` (nombre).
-5. En el hijo: ajusta `termios`, limpia señales, `closefrom(STDERR_FILENO + 1)`,
-   `environ_push`, y recién ahí ejecuta:
+5. En el hijo: ajusta `termios`, limpia señales, `closefrom(STDERR_FILENO + 1)`
+   (`spawn.c:541`), `log_close()` (`:543`), `environ_push` (`:544`), y recién ahí ejecuta:
    - varios argumentos → `execvp(argvp[0], argvp)` (**`spawn.c:552`**);
    - un argumento → `execl(shell, argv0, "-c", cmd)` (**`spawn.c:567`**);
    - ninguno → `execl(shell, "-nombre")`, shell de login (**`spawn.c:574`**).
 6. En el padre (`complete:`): `window_pane_set_event(new_wp)` y `spawn_fire_pane_created`.
 
-**Este es el único lugar donde `tmux` convierte "un comando" en "un proceso con terminal".**
+**Este es el único lugar donde `tmux` convierte "un comando" en "un proceso con terminal"
+para un pane** (los jobs tienen su propio camino, hallazgo 6).
 Cualquier pane SSH tiene que decidir qué hace en este punto.
 
 ### 3 · Cómo vive un pane: fd + bufferevent
@@ -121,7 +122,9 @@ fd dispara `window_pane_error_callback` (el mismo flag). Cerrar el fd:
 
 `tmux` es **de un solo hilo, con libevent** (`event_init` vía `osdep_event_init()`,
 llamado desde `tmux.c:624`; en Linux fija `EVENT_NOEPOLL=1` porque "epoll doesn't work on
-/dev/null", `osdep-linux.c:92`). Consecuencia: **cualquier llamada bloqueante en el
+/dev/null", `osdep-linux.c:92`). El server reusa esa misma base: `event_reinit`
+(`server.c:198`) y después `proc_loop` (`server.c:258`), que llama a `event_loop`
+(`proc.c:227`). Consecuencia: **cualquier llamada bloqueante en el
 proceso server congela a todos los clientes**. Un `ssh_connect()` / handshake bloqueante
 dentro del server es inaceptable.
 
@@ -136,7 +139,7 @@ Hallazgo contraintuitivo: **no hay ningún `#ifdef __linux__` en el código** (v
 
 - **Un archivo por plataforma**: `osdep-linux.c`, `osdep-darwin.c`, `osdep-freebsd.c`, … y
   `Makefile.am:235` agrega `osdep-@PLATFORM@.c`. `configure.ac:1006-1118` calcula
-  `PLATFORM` con un `case "$host_os"` (Linux en ~`:1062`).
+  `PLATFORM` con un `case "$host_os"` (el brazo `*linux*)` está en `:1062` y `PLATFORM=linux` en `:1064`).
 - **`compat/`**: reemplazos de funciones que faltan (`fdforkpty.c`, `closefrom.c`,
   `strlcpy.c`, …), anunciados en **`compat.h`** (`fdforkpty` en `:396-404`). `configure.ac`
   decide si hace falta cada uno (p. ej. `:828-839` busca `fdforkpty`/`forkpty` en `libutil`
@@ -159,7 +162,7 @@ Hallazgo contraintuitivo: **no hay ningún `#ifdef __linux__` en el código** (v
 
 Hay un **segundo precedente**, más cercano a una feature con código propio: `ENABLE_SIXEL`
 (`configure.ac:549-552`, `AC_DEFINE` + `AM_CONDITIONAL`). Agrega **fuentes propias** con
-`if ENABLE_SIXEL … dist_tmux_SOURCES += image.c image-sixel.c` (`Makefile.am:252-255`) y se usa con
+`if ENABLE_SIXEL … dist_tmux_SOURCES += image.c image-sixel.c` (`Makefile.am:253-255`) y se usa con
 `#ifdef ENABLE_SIXEL` en `format.c`, `input.c`, `screen-write.c` y `screen-redraw.c`. O sea: `tmux`
 **sí** usa `#ifdef` para features opcionales; lo que no usa es `#ifdef` por plataforma.
 
@@ -242,5 +245,7 @@ Acotar también es decidir qué no leer.
 
 - Que `libssh` ofrezca `SSH_OPTIONS_IDENTITY_AGENT` y un modo no bloqueante adecuado
   (conocimiento externo, no verificado acá).
-- Comportamiento exacto de `format_cb_pane_current_command` cuando `osdep_get_name` devuelve
-  `NULL` (`format.c:956-978`): no se leyó el manejo del `NULL`.
+- ~~Comportamiento de `pane_current_command` cuando `osdep_get_name` devuelve `NULL`.~~
+  **Verificado en la iteración 2:** la función es `format_cb_current_command`
+  (`format.c:958`); si el nombre es `NULL` o vacío (`:967`) cae a
+  `cmd_stringify_argv(wp->argc, wp->argv)`, o sea al `argv` del pane.
