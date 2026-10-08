@@ -54,15 +54,23 @@ era con las notas. **Quedan** como warnings: mecanismos en FR (decisión del equ
 **Cuarta pasada independiente** (sobre la spec con 100 VCs): **NEEDS WORK**. El chequeo mecánico
 (`--strict`) da OK y todas las citas de código se verificaron contra `5a820e63`. Queda un Issue en la
 dimensión 3: los VCs de sesión (VC-50.1 … VC-57.1, VC-52.1, VC-54.1, VC-56.1) capturan la pantalla sin
-una espera con intervalo y tope definida en el harness. **Pendientes conocidos, sin aplicar en esta
-entrega:** espera de los VCs de sesión; garantizar "sin agent" en el entorno global del server; comando y
-datos de VC-42.1; lanzar `strace -f` sin bloquear; asignación de `$MUTE`; `t0` de VC-62.1; script dueño de
-los VCs de build; FR/VC para el fallback del agent, una clave por defecto que no es clave y `-i` a un
-directorio; precedencia entre fallas del cliente; VC de exit `1` para las fallas de BR-3; autenticación con
-passphrase correcta; definir "sesión" en el glosario. Decisiones ya tomadas para cuando se apliquen:
-el agent es solo la primera fuente (si no sirve se siguen `-i` y las claves por defecto), una clave por
-defecto que no es clave se salta, `-i` a un directorio es un error de uso, y los símbolos de `tmux` se
-quedan en los FR como anclas.
+una espera con intervalo y tope definida en el harness. **Aplicado a continuación** (FR-1…FR-70, BR-1…BR-4, NFR-1…NFR-3, INV-1…INV-7; 118 VCs; el
+repo también recibe las correcciones de la tercera pasada, que en el commit anterior no habían llegado
+al archivo):
+- Harness: `esperar` (sondeo cada 100 ms, tope 10 s) para todos los VCs de sesión; "sin agent" garantizado
+  (el server arranca con `env -u SSH_AUTH_SOCK`); `strace -f` en segundo plano; `$MUTE` y `$FULL`;
+  build de las mediciones sin `--enable-asan`.
+- Nuevos FR: FR-63 (`-i` a un directorio es error de uso), FR-64 y FR-65 (el agent inalcanzable o sin clave
+  aceptada no impide usar `-i`), FR-66 (clave por defecto que no es clave se salta), FR-67 (usuario por
+  defecto), FR-68 (`-t` ocupado), FR-69 (connect TCP que no completa, 15 s), FR-70 (passphrase correcta).
+- FR-46 gana sobre FR-47 cuando el servidor solo acepta password (VC-46.2); BR-3 tiene un VC de exit `1`
+  por cada falla del cliente (VC-BR3.5 … VC-BR3.13) y cierra en la Iteración 4.
+- Un script dueño para los VCs de build (`regress/native-ssh-build.sh`); glosario con "sesión de `tmux`" y
+  "sesión SSH"; la entrega se declara por el tag `03-Agent`.
+- Los símbolos de `tmux` **se quedan en los FR como anclas** (decisión del equipo; el reviewer los marca
+  como Warning 2.1).
+Queda sin aplicar el COULD de desacoplar VC-8.1, VC-9.1, VC-INV1.1 y VC-INV7.1 de nombres internos. Esta
+versión no tuvo una pasada independiente posterior.
 
 **Sigue sin hacerse:** el hash del commit de la entrega;
 los VCs de red, que necesitan la implementación.
