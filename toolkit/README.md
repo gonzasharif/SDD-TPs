@@ -113,7 +113,7 @@ Ya está instalado en este repo. Para llevarlo a otro, copien `.claude/` y fusio
 | Hook | [`evidencia/hook-sin-jq.txt`](evidencia/hook-sin-jq.txt) | Sin `jq` el hook sigue **vetando** un commit con la suite roja (`exit 2`) y deja pasar uno en verde |
 | Skill | [`evidencia/skill-check-vc-coverage.txt`](evidencia/skill-check-vc-coverage.txt) | El script rechaza la spec anterior (sin VC por invariante, sin decisiones con "Descartado"), aprueba la actual, y rechaza copias rotas |
 | Skill | [`evidencia/sesion-skill.md`](evidencia/sesion-skill.md) | Sesión real donde `write-spec-brownfield` carga **sin nombrarlo** |
-| Subagent | [`evidencia/sesion-subagent.md`](evidencia/sesion-subagent.md) | Sesión real donde `spec-reviewer` revisa `brownfield/spec-brownfield.md` y devuelve el veredicto en el formato fijo (NEEDS WORK) |
+| Subagent | [`evidencia/sesion-subagent.md`](evidencia/sesion-subagent.md) | Sesión real donde `spec-reviewer` revisa `brownfield/spec-brownfield.md` y devuelve el veredicto en el formato fijo (READY, sin Issues, sobre la spec final) |
 | Hook | [`evidencia/sesion-hook.md`](evidencia/sesion-hook.md) | Sesión real donde el agente intenta commitear con `-i` roto: el hook veta el commit y nombra `TestMatchString_IgnoreCase` y `TestRun_IgnoreCase` |
 
 Las tres sesiones (`sesion-*.md`) son exports de sesiones reales de Claude Code, no
