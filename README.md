@@ -7,6 +7,7 @@ recorre el mismo pipeline de SDD sobre un caso distinto:
 |---|---|---|---|---|
 | [`greenfield/`](greenfield/) | 1 | `gcsgrep`: grep sobre objetos de Google Cloud Storage | Proyecto desde cero | Spec, plan y **código** de la Iteración 1, verificado |
 | [`brownfield/`](brownfield/) | 2 | Cliente SSH nativo en `tmux`, solo Linux | Cambio sobre un codebase existente | Notas de exploración y spec. **Sin implementación** |
+| [`toolkit/`](toolkit/) | 3 | El pipeline de L1–L2 encodeado para el agente | Skill + subagent + hook + rule, instalados en [`.claude/`](.claude/) | Toolkit funcionando y evidencia de cada pieza ejecutándose |
 
 Cada carpeta tiene su propio `README.md` con el detalle de lo que contiene y cómo
 recorrerlo.
@@ -36,11 +37,14 @@ SDD-TPs/
 │   ├── gcsgrep-requirements.md · gcsgrep-design.md · gcsgrep-spec.md
 │   ├── gcsgrep-plan.md · gcsgrep-cobertura-vc.md
 │   └── gcsgrep/                ← código en Go
-└── brownfield/                 ← TP de la Lección 2
-    ├── README.md
-    ├── notas-exploracion.md
-    ├── spec-brownfield.md
-    └── revision-spec.md
+├── brownfield/                 ← TP de la Lección 2
+│   ├── README.md
+│   ├── notas-exploracion.md
+│   ├── spec-brownfield.md
+│   └── revision-spec.md
+├── toolkit/                    ← TP de la Lección 3: README y evidencia
+├── .claude/                    ← las piezas del toolkit, donde el agente las carga
+└── CLAUDE.md                   ← rule del toolkit
 ```
 
 ## Tags

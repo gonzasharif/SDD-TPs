@@ -1,0 +1,32 @@
+$ # 3. Regresión introducida a propósito: -i deja de ignorar mayúsculas (FR-4)
+$ git diff greenfield/gcsgrep/internal/match/match.go
+diff --git a/greenfield/gcsgrep/internal/match/match.go b/greenfield/gcsgrep/internal/match/match.go
+index f2fbab0..a7f2ebd 100644
+--- a/greenfield/gcsgrep/internal/match/match.go
++++ b/greenfield/gcsgrep/internal/match/match.go
+@@ -17,7 +17,7 @@ type Matcher struct {
+ func New(pattern string, ignoreCase bool) (*Matcher, error) {
+ 	p := pattern
+ 	if ignoreCase {
+-		p = "(?i)" + p
++		p = "" + p // regression: -i ignored
+ 	}
+ 	re, err := regexp.Compile(p)
+ 	if err != nil {
+$ echo {"tool_input":{"command":"git commit -am \"tweak matcher\""}} | tests-green-before-commit.sh
+COMMIT BLOCKED — the existing gcsgrep test suite is red (go test ./... exit 1).
+
+--- FAIL: TestRun_IgnoreCase (0.00s)
+    app_test.go:154: with -i: {code:1 stdout: stderr: progress:gcsgrep: progress: 1/1 (100%)
+FAIL
+FAIL	gcsgrep/internal/app	4.566s
+--- FAIL: TestMatchString_IgnoreCase (0.00s)
+    match_test.go:14: with -i, "timeout" should match "2026-09-20T10:02:05Z ERROR TIMEOUT while waiting for upstream"
+FAIL
+FAIL	gcsgrep/internal/match	0.006s
+FAIL
+
+A previously green test that turns red is a regression, not an outdated test.
+Fix the code so the suite passes again; do not edit or skip the test to make it pass.
+Then retry the commit. Reproduce with: (cd greenfield/gcsgrep && go test ./...)
+exit=2

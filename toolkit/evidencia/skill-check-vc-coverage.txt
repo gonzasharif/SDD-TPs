@@ -1,0 +1,10 @@
+$ # Spec real: pasa
+$ .claude/skills/write-spec-brownfield/scripts/check-vc-coverage.sh brownfield/spec-brownfield.md
+OK: 21 VCs, all requirements covered, all in the plan
+exit=0
+
+$ # Copia rota: se borró VC-13 (único VC de NFR-2) y se sacó VC-17 del plan
+$ .claude/skills/write-spec-brownfield/scripts/check-vc-coverage.sh bad-spec.md
+FAIL: NFR-2 has no VC
+FAIL: VC-17 is not in any iteration
+exit=1
