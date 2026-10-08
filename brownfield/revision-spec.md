@@ -51,6 +51,19 @@ BR-4 corregida. Las citas `server.c:468` y `window.c:597` coinciden con el commi
 era con las notas. **Quedan** como warnings: mecanismos en FR (decisión del equipo), usuario por defecto,
 `-t :N` ocupado, precedencia entre fallas de ejecución, `-i` a un directorio, connect TCP que no completa.
 
+**Cuarta pasada independiente** (sobre la spec con 100 VCs): **NEEDS WORK**. El chequeo mecánico
+(`--strict`) da OK y todas las citas de código se verificaron contra `5a820e63`. Queda un Issue en la
+dimensión 3: los VCs de sesión (VC-50.1 … VC-57.1, VC-52.1, VC-54.1, VC-56.1) capturan la pantalla sin
+una espera con intervalo y tope definida en el harness. **Pendientes conocidos, sin aplicar en esta
+entrega:** espera de los VCs de sesión; garantizar "sin agent" en el entorno global del server; comando y
+datos de VC-42.1; lanzar `strace -f` sin bloquear; asignación de `$MUTE`; `t0` de VC-62.1; script dueño de
+los VCs de build; FR/VC para el fallback del agent, una clave por defecto que no es clave y `-i` a un
+directorio; precedencia entre fallas del cliente; VC de exit `1` para las fallas de BR-3; autenticación con
+passphrase correcta; definir "sesión" en el glosario. Decisiones ya tomadas para cuando se apliquen:
+el agent es solo la primera fuente (si no sirve se siguen `-i` y las claves por defecto), una clave por
+defecto que no es clave se salta, `-i` a un directorio es un error de uso, y los símbolos de `tmux` se
+quedan en los FR como anclas.
+
 **Sigue sin hacerse:** el hash del commit de la entrega;
 los VCs de red, que necesitan la implementación.
 
