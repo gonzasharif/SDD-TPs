@@ -1,0 +1,36 @@
+$ # Entorno SIN jq (PATH con solo bash, cat, grep, head). Un `go` falso simula la suite.
+$ PATH=<sin jq> command -v jq || echo "jq: not found"
+jq: not found
+
+$ # 1. No es un commit: pasa
+exit=0
+
+$ # 2. Commit con la suite en verde: pasa
+exit=0
+
+$ # 3. Commit con la suite en rojo: VETADO aunque no haya jq
+COMMIT BLOCKED — the existing gcsgrep test suite is red (go test ./... exit 1).
+
+
+A previously green test that turns red is a regression, not an outdated test.
+Fix the code so the suite passes again; do not edit or skip the test to make it pass.
+Then retry the commit. Reproduce with: (cd greenfield/gcsgrep && go test ./...)
+exit=2
+
+$ # 4. Commit pegado al cierre del JSON ("git commit"): también VETADO
+COMMIT BLOCKED — the existing gcsgrep test suite is red (go test ./... exit 1).
+
+
+A previously green test that turns red is a regression, not an outdated test.
+Fix the code so the suite passes again; do not edit or skip the test to make it pass.
+Then retry the commit. Reproduce with: (cd greenfield/gcsgrep && go test ./...)
+exit=2
+
+$ # 5. Con jq presente, el comportamiento es el mismo (commit en rojo: VETADO)
+COMMIT BLOCKED — the existing gcsgrep test suite is red (go test ./... exit 1).
+
+
+A previously green test that turns red is a regression, not an outdated test.
+Fix the code so the suite passes again; do not edit or skip the test to make it pass.
+Then retry the commit. Reproduce with: (cd greenfield/gcsgrep && go test ./...)
+exit=2

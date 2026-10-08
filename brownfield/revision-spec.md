@@ -5,6 +5,49 @@
 > la spec**, **cobertura de VCs** y **disciplina de alcance** (límite solo-Linux e
 > invariantes). Los huecos se corrigieron en la spec; este documento deja el registro.
 
+## Tercera iteración — contra el resumen de correcciones
+
+Se releyó la spec contra `resumen-correcciones-sdd` (las tres correcciones recibidas). La
+spec se **renumeró** otra vez: FR-1…FR-57 y VCs `VC-<n>.<k>` (`VC-BRn.k`, `VC-NFRn.k`,
+`VC-INVn.k`), de modo que cada VC lleva el número del requisito que observa.
+
+**Esta sección no es una aprobación.** Quien escribe la spec no la aprueba: el veredicto lo
+da el `spec-reviewer`. El chequeo mecánico (`check-vc-coverage.sh --strict`) sale con `0`.
+
+| Error del resumen | Qué se encontró | Resolución |
+|---|---|---|
+| FRs no atómicos | FR-20, 21, 27, 36, 37 con mensaje y exit code juntos; FR-14, FR-30 con dos resultados; FR-9, 15, 36 con alternativas | Se partieron (57 FR). El exit code de toda falla es la **BR-3**; los mensajes tienen su FR |
+| Caminos de falla sin FR ni VC | Sin clave, clave rechazada, passphrase incorrecta, `-p` inválido, `-i` inexistente o ilegible, destino vacío, `known_hosts` ilegible, precedencia | FR-21 … FR-25, FR-34, FR-41, FR-43, FR-44 con su VC |
+| Texto del error sin fijar | `<motivo>` de FR-36 sin definir; `<host>` ambiguo | FR-55 y FR-56 con texto literal; glosario define host, usuario y falla |
+| Decisiones sin "descartado" | La tabla tenía decisión y código, no las alternativas | Columna "Descartado y por qué"; decisiones nuevas: flags, exit code `1`, timeout de 15 s y umbrales de NFR |
+| TBD | "LGPL (a confirmar)", versión mínima de `libssh` sin fijar, línea de base "sin medir" | Mínimo `libssh >= 0.9.0` (FR-2, FR-4): en 0.9.0 `ssh_is_server_known` y `ssh_write_knownhost` ya están deprecadas en favor de `ssh_session_is_known_server` y `ssh_session_update_known_hosts`. Licencia sin "a confirmar". Línea de base medida (abajo) |
+| NFR sin texto ni medición | NFR-3 solo existía en su VC; ningún VC nombraba cómo medir | NFR-1 y NFR-3 con umbral, condición y herramienta (`date +%s%N`) en el requisito y en el VC |
+| IDs de VC desalineados | FR-22 usaba VC-23, FR-36 usaba VC-38 | `VC-<n>.<k>` por requisito |
+| VCs atados al código | VC-8 y VC-41 hacían `grep` sobre fuentes | Se quitaron; VC-4 manual pasó a `VC-5.1` automático (`native-ssh-guard.sh`, build fuera del árbol) |
+| Historia del proceso | Banner "Iteración 2 de la spec, tras la corrección de la cátedra" | Quitado; el registro vive acá |
+| Autoevaluación como aprobación | La segunda iteración cerraba con "lista para planificar" | Se aclara abajo; el veredicto es del `spec-reviewer` |
+| Glosario | No había | Sección "Glosario" |
+
+**Citas verificadas** contra un checkout de `tmux` en `5a820e63`: `cmd.c:123`, `spawn.c:478`,
+`:504`, `:541`, `:543`, `:544`, `:552`, `:567`, `:574`, `tmux.h:2531`, `:4195`, `:1306`,
+`configure.ac:463`, `:508`, `:545`, `:670`, `:1006`, `Makefile.am:243`, `:253`,
+`cmd-new-window.c:33`, `:41`, `:46`, `:83`, `:156`, `:172-174`, `arguments.c:240`, `cmd.c:530`,
+`format.c:901`, `:958`, `:2288`, `compat.h:426`, `client.c:349`, `window.c:597`, `:612`,
+`server.c:198`, `:258`, `:468`, `:491`, `:499`, `proc.c:227`, `osdep-linux.c:30`, `:92`,
+`tmux.c:624`, `environ.c:253`, `:265`, `options-table.c:1207`. Los textos `unknown flag -%c` y
+`usage: %s %s` salen de `arguments.c:240` y `cmd.c:530`.
+
+**Línea de base medida** (build de `5a820e63` con `--enable-utf8proc`): `make` sale con `0`;
+`tmux list-commands` imprime **92** líneas; `regress/` tiene **172** scripts `*.sh`.
+
+### Lo que sigue sin hacerse
+
+- La corrida **completa** de `regress/` no se completó (cada pasada tarda varios minutos; los
+  scripts que corrieron dieron `PASS`). La hace quien implemente antes de la Iteración 1.
+- Los VCs de red (`sshd`, `strace`, listener mudo) no se ejecutaron: no hay implementación.
+- Falta el **hash del commit de la entrega**: se agrega al entregar, después del merge.
+- Falta la pasada del `spec-reviewer` sobre esta versión.
+
 ## Segunda iteración — tras la corrección de la cátedra
 
 La primera entrega (tag `02-Brownfield`, commit `e8e6d3a`) obtuvo **5,5/10**: VE-1 y VE-2
@@ -89,7 +132,7 @@ prompt remoto") y dice qué iteración necesita cada uno.
 - **Línea de base sin medir:** no se compiló `tmux`; 92 y 172 salen de lectura estática.
 - **`strace` en el harness** supone que el runner permite trazar procesos hijos.
 
-**Veredicto: lista para planificar.**
+*Autoevaluación de la segunda iteración: no vale como aprobación (ver la tercera).*
 
 ---
 

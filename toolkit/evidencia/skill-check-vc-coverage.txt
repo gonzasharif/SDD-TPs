@@ -1,10 +1,34 @@
-$ # Spec real: pasa
-$ .claude/skills/write-spec-brownfield/scripts/check-vc-coverage.sh brownfield/spec-brownfield.md
-OK: 21 VCs, all requirements covered, all in the plan
+$ # 1. La spec ANTERIOR (main, antes de las correcciones): el script nuevo la rechaza
+$ check-vc-coverage.sh --strict old-spec.md | sort | uniq -c | sort -rn | head -12
+     20 WARN: <req>: "entonces" may hold more than one result (" y " / " o ")
+     12 FAIL: <req> has no VC
+      2 WARN: <req>: "dado" has alternatives (" o ")
+      2 WARN: <req>: "cuando" has alternatives (" o ")
+      1 FAIL: process history at line N: > **Iteración 2 de la spec**, tras la corrección de la cátedra: FR atómic
+      1 FAIL: only 45 VCs for 49 requirements (need #VC >= #FR + #BR + #NFR + #INV)
+      1 FAIL: missing section '## Glosario'
+      1 FAIL: a VC points to FR-45, which does not exist
+      1 FAIL: a VC points to FR-44, which does not exist
+      1 FAIL: a VC points to FR-43, which does not exist
+      1 FAIL: a VC points to FR-42, which does not exist
+      1 FAIL: a VC points to FR-41, which does not exist
+exit=1
+
+$ # 2. La spec actual: pasa, incluso en modo estricto
+$ check-vc-coverage.sh --strict brownfield/spec-brownfield.md
+OK: 82 VCs for 70 requirements; every requirement has a VC and closes in exactly one iteration
 exit=0
 
-$ # Copia rota: se borró VC-13 (único VC de NFR-2) y se sacó VC-17 del plan
-$ .claude/skills/write-spec-brownfield/scripts/check-vc-coverage.sh bad-spec.md
-FAIL: NFR-2 has no VC
-FAIL: VC-17 is not in any iteration
+$ # 3. Copia rota: se borran los dos VCs de INV-3 (VC-INV3.1 y VC-INV3.2)
+FAIL: INV-3 has no VC
+exit=1
+
+$ # 4. Copia rota: un FR con dos "cuando" y una decision con wording de TBD
+FAIL: FR-12 has 2 "cuando" (needs exactly 1)
+FAIL: TBD-style wording at line 803: - **Licencia: a confirmar.** **Nombres de las funciones de `libssh`:** la spec fija la ver
+exit=1
+
+$ # 5. Copia rota: se saca un requisito del plan y se quita la columna "Descartado"
+FAIL: BR-2 is not in any iteration
+FAIL: '## Decisiones' has no 'Descartado' column (chosen / grounds / discarded)
 exit=1

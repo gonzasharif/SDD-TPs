@@ -16,6 +16,9 @@ código es `greenfield/gcsgrep` (Go).
 - Para especificar un cambio sobre código existente, usá el skill
   `write-spec-brownfield`. Para revisar una spec, el subagent `spec-reviewer`: quien
   escribe la spec no la aprueba.
+- Una spec brownfield no se entrega sin `check-vc-coverage.sh --strict` en 0 y una revisión
+  del `spec-reviewer` sin Issues. Las reglas que la cátedra penalizó (FR atómicos, un VC por
+  invariante, decisiones con fundamento en código, cero TBD) están en el skill.
 - Un test que estaba en verde y pasa a rojo es una regresión: se arregla el código, no
   el test. Un hook bloquea `git commit` con la suite en rojo.
 
