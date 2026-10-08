@@ -54,7 +54,7 @@ era con las notas. **Quedan** como warnings: mecanismos en FR (decisión del equ
 **Cuarta pasada independiente** (sobre la spec con 100 VCs): **NEEDS WORK**. El chequeo mecánico
 (`--strict`) da OK y todas las citas de código se verificaron contra `5a820e63`. Queda un Issue en la
 dimensión 3: los VCs de sesión (VC-50.1 … VC-57.1, VC-52.1, VC-54.1, VC-56.1) capturan la pantalla sin
-una espera con intervalo y tope definida en el harness. **Aplicado a continuación** (FR-1…FR-70, BR-1…BR-4, NFR-1…NFR-3, INV-1…INV-7; 118 VCs; el
+una espera con intervalo y tope definida en el harness. **Aplicado a continuación** (FR-1…FR-75, BR-1…BR-4, NFR-1…NFR-3, INV-1…INV-7; 131 VCs; el
 repo también recibe las correcciones de la tercera pasada, que en el commit anterior no habían llegado
 al archivo):
 - Harness: `esperar` (sondeo cada 100 ms, tope 10 s) para todos los VCs de sesión; "sin agent" garantizado
