@@ -1,9 +1,7 @@
 # Lección 4 — `gcsgrep` contra un bucket real, por MCP
 
-> **Estado: parcial.** Hecho y verificado offline: config, hook, skill, subagent, plugin
-> (`claude plugin validate` pasa), fixtures y prueba del hook. **Pendiente** (necesita
-> crear la service account y el bucket en GCP, ver "Pasos manuales"): evidencias
-> `01`, `02`, `03`, `04` (403 de GCS), `05`, `06` (sesión con `--plugin-dir`) y `07`.
+> **Estado:** las 7 evidencias están en [`evidencia/`](evidencia). Hallazgos del server 0.6.0 que
+> cambiaron el diseño: no devuelve `generation` ni checksum, no descomprime `.gz`, no expone la cuenta.
 
 ## Qué hace y qué paso SDD alimenta
 
@@ -26,13 +24,15 @@ fecha, cuenta) y **falla si una *generation* cambió** entre la lectura y el ver
 
 ```bash
 claude plugin validate plugin/gcsgrep-sdd
-claude --plugin-dir plugin/gcsgrep-sdd     # pide project_id y bucket_name (userConfig)
+claude --plugin-dir plugin/gcsgrep-sdd
+/plugin configure gcsgrep-sdd           # project_id y bucket_name (userConfig). --plugin-dir no abre el diálogo solo
+# En un marketplace: claude plugin install gcsgrep-sdd@<mkt> --config project_id=… --config bucket_name=…
 ```
 
 Credencial siempre por ADC, nunca en el paquete:
 `gcloud auth application-default login --impersonate-service-account=gcsgrep-mcp-reader@<proyecto>.iam.gserviceaccount.com`.
 
-## Pasos manuales (los hace una persona con permisos de IAM)
+## Pasos manuales de GCP (ya ejecutados en el proyecto de prueba)
 
 ```bash
 P=gcsgrep-sdd-e4c0ad; B=gcsgrep-mcp-e4c0ad
@@ -60,9 +60,15 @@ gcloud auth application-default login --impersonate-service-account=$SA
    fuera de las 3 de lectura —probado offline: [`04b`](evidencia/04b-hook-allowlist-offline.txt);
    (2) modo del server: `delete_object` no existe —[`04a`](evidencia/04a-tools-list-modo-seguro.txt);
    (3) credencial: GCS responde `403` a `cp`, `rm` y `buckets create` con la SA —[`04c`](evidencia/04c-credencial-403.txt).
+   Probado también en vivo con una sesión de Claude Code: [`04-muro`](evidencia/04-muro.md) y, con el plugin y sus nombres nuevos, [`06`](evidencia/06-plugin.txt).
    La capa 3 es la que garantiza; las otras dos son defensa en profundidad.
 6. **Trifecta:** la sesión principal tiene Bash+red (y ADC en la máquina) y lee contenido
    no confiable. La pata cortada es la **exposición del contenido no confiable a una sesión
    con Bash**: lo lee `bucket-reader`, que no tiene Bash ni red y devuelve solo una tabla.
    Residual: la sesión principal igual corre `gcsgrep` con la ADC impersonada (solo lectura).
-7. **Costo de contexto:** **pendiente** (`07-contexto`, `/context`).
+7. **Costo de contexto:** el server suma **~3.2k tokens** de definiciones de 15 tools (`/context`, [`07`](evidencia/07-contexto.md)), diferidas: se cargan bajo demanda, no en cada turno. Conviene habilitar el plugin solo en repos que usen el bucket de prueba; 12 de las 15 tools no se usan y el hook las veta.
+
+### Límites conocidos
+- `bucket_name` del hook tiene default `gcsgrep-mcp-e4c0ad` si falta la variable: en la prueba no se distingue el valor de `userConfig` del default.
+- Sin `generation`, la frescura se mide con `time_created`/`updated`/`size`.
+- La sesión principal igual tiene Bash y la ADC impersonada (solo lectura); el muro protege el bucket, no esa máquina.

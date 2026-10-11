@@ -1,27 +1,38 @@
+# 06 — Plugin gcsgrep-sdd@0.1.0
+
+## claude plugin validate
 $ claude plugin validate plugin/gcsgrep-sdd
 Validating plugin manifest: /Users/gonzalocuri/Documents/dev/repos/SDD/SDD-TPs/plugin/gcsgrep-sdd/.claude-plugin/plugin.json
 
 ✔ Validation passed
 
-# Capa 1 (hook) repetida con los NOMBRES NUEVOS del plugin: mcp__plugin_gcsgrep-sdd_gcs__<tool>
-$ mcp/tests/test-allowlist.sh mcp__plugin_gcsgrep-sdd_gcs__ plugin/gcsgrep-sdd/hooks/gcs-allowlist.sh
-OK     exit=0 (esperado 0)  mcp__plugin_gcsgrep-sdd_gcs__list_objects
-OK     exit=0 (esperado 0)  mcp__plugin_gcsgrep-sdd_gcs__read_object_metadata
-OK     exit=0 (esperado 0)  mcp__plugin_gcsgrep-sdd_gcs__read_object_content
-OK     exit=2 (esperado 2)  mcp__plugin_gcsgrep-sdd_gcs__write_object_safe
-         stderr: BLOQUEADO por gcs-allowlist: la tool 'mcp__plugin_gcsgrep-sdd_gcs__write_object_safe' no está en la allowlist (list_objects read_object_metadata read_object_content).
-OK     exit=2 (esperado 2)  mcp__plugin_gcsgrep-sdd_gcs__upload_object_safe
-         stderr: BLOQUEADO por gcs-allowlist: la tool 'mcp__plugin_gcsgrep-sdd_gcs__upload_object_safe' no está en la allowlist (list_objects read_object_metadata read_object_content).
-OK     exit=2 (esperado 2)  mcp__plugin_gcsgrep-sdd_gcs__copy_object_safe
-         stderr: BLOQUEADO por gcs-allowlist: la tool 'mcp__plugin_gcsgrep-sdd_gcs__copy_object_safe' no está en la allowlist (list_objects read_object_metadata read_object_content).
-OK     exit=2 (esperado 2)  mcp__plugin_gcsgrep-sdd_gcs__create_bucket
-         stderr: BLOQUEADO por gcs-allowlist: la tool 'mcp__plugin_gcsgrep-sdd_gcs__create_bucket' no está en la allowlist (list_objects read_object_metadata read_object_content).
-OK     exit=2 (esperado 2)  mcp__plugin_gcsgrep-sdd_gcs__delete_object
-         stderr: BLOQUEADO por gcs-allowlist: la tool 'mcp__plugin_gcsgrep-sdd_gcs__delete_object' no está en la allowlist (list_objects read_object_metadata read_object_content).
-OK     exit=2 (esperado 2)  mcp__plugin_gcsgrep-sdd_gcs__tool_nueva_de_v9
-         stderr: BLOQUEADO por gcs-allowlist: la tool 'mcp__plugin_gcsgrep-sdd_gcs__tool_nueva_de_v9' no está en la allowlist (list_objects read_object_metadata read_object_content).
-OK     exit=2 (esperado 2)  mcp__plugin_gcsgrep-sdd_gcs__read_object_content
-         stderr: BLOQUEADO por gcs-allowlist: bucket 'un-bucket-real-de-prod' != 'gcsgrep-mcp-e4c0ad' (el único permitido).
-exit=0
+## Tools con los nombres nuevos (claude -p --plugin-dir, desde un directorio sin .mcp.json)
+   userConfig inyectado con --settings <tmp> {"pluginConfigs":{"gcsgrep-sdd@inline":{"options":{project_id,bucket_name}}}}
+   (--plugin-dir no muestra el diálogo de userConfig; ver README)
 
-# Pendiente: tools con nombre nuevo vistas por el agente y prueba end-to-end con claude --plugin-dir (ver mcp/README.md)
+mcp__plugin_gcsgrep-sdd_gcs__check_iam_permissions   ... (15 tools, prefijo mcp__plugin_gcsgrep-sdd_gcs__)
+list_objects · read_object_content · read_object_metadata · write_object_safe · upload_object_safe · copy_object_safe · create_bucket · list_buckets · get_bucket_* · view_iam_policy · insights (3)
+
+## Prueba del muro repetida con el plugin cargado
+
+### Capa 1 — write_object_safe (permitida en --allowedTools; corta el hook del plugin)
+```
+PreToolUse:mcp__plugin_gcsgrep-sdd_gcs__write_object_safe hook error: ["/Users/gonzalocuri/Documents/dev/repos/SDD/SDD-TPs/plugin/gcsgrep-sdd"/hooks/gcs-allowlist.sh]: BLOQUEADO por gcs-allowlist: la tool 'mcp__plugin_gcsgrep-sdd_gcs__write_object_safe' no está en la allowlist (list_objects read_object_metadata read_object_content).
+Este agente solo LEE el bucket de prueba. No reintentes con otra tool que escriba o borre.
+This hook comes from the gcsgrep-sdd@inline plugin.
+```
+Objeto creado? $ gcloud storage ls gs://gcsgrep-mcp-e4c0ad/prueba-plugin.txt → matched no objects
+
+### Bucket ajeno — list_objects sobre gcsgrep-test-e4c0ad
+```
+PreToolUse:mcp__plugin_gcsgrep-sdd_gcs__list_objects hook error: ["/Users/gonzalocuri/Documents/dev/repos/SDD/SDD-TPs/plugin/gcsgrep-sdd"/hooks/gcs-allowlist.sh]: BLOQUEADO por gcs-allowlist: bucket 'gcsgrep-test-e4c0ad' != 'gcsgrep-mcp-e4c0ad' (el único permitido).
+```
+(la 1ª llamada, con input {}, fue una sonda de ToolSearch y falló validación del server; no es el veto)
+
+### Subagent del plugin lee el hostil: tools usadas
+[principal] Agent
+[subagent] mcp__plugin_gcsgrep-sdd_gcs__list_objects
+[subagent] mcp__plugin_gcsgrep-sdd_gcs__read_object_metadata
+[subagent] mcp__plugin_gcsgrep-sdd_gcs__read_object_content
+
+### Capas 2 y 3: no dependen del nombre; ver 04a y 04c.
