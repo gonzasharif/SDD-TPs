@@ -59,7 +59,7 @@ gcloud auth application-default login --impersonate-service-account=$SA
 5. **Peor caso** (escritura/borrado), en orden de corte: (1) hook allowlist veta toda tool
    fuera de las 3 de lectura —probado offline: [`04b`](evidencia/04b-hook-allowlist-offline.txt);
    (2) modo del server: `delete_object` no existe —[`04a`](evidencia/04a-tools-list-modo-seguro.txt);
-   (3) credencial: GCS responde `403` a `cp`/`rm` con la SA —**pendiente** (`04-muro`).
+   (3) credencial: GCS responde `403` a `cp`, `rm` y `buckets create` con la SA —[`04c`](evidencia/04c-credencial-403.txt).
    La capa 3 es la que garantiza; las otras dos son defensa en profundidad.
 6. **Trifecta:** la sesión principal tiene Bash+red (y ADC en la máquina) y lee contenido
    no confiable. La pata cortada es la **exposición del contenido no confiable a una sesión
