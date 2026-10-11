@@ -28,6 +28,7 @@ fecha, cuenta) y **falla si una *generation* cambió** entre la lectura y el ver
 | [`02-iam.txt`](evidencia/02-iam.txt) | Política IAM del bucket |
 | [`03-skill.md`](evidencia/03-skill.md) · [`03-skill-transcripcion.md`](evidencia/03-skill-transcripcion.md) | Registro del skill con procedencia y la línea "solo del bucket" · transcripción completa de la sesión |
 | [`03b-skill-objeto-cambio.md`](evidencia/03b-skill-objeto-cambio.md) · [`03b-transcripcion.md`](evidencia/03b-transcripcion.md) | Un objeto cambia entre la lectura y el veredicto (`tests/mutate-object.sh`): el skill responde `NO VERIFICADO — evidencia vieja` |
+| [`03c-skill-bucket-completo.md`](evidencia/03c-skill-bucket-completo.md) · [`03c-transcripcion.md`](evidencia/03c-transcripcion.md) | Bucket completo: texto, anidado, `.gz` (no contrastable), binario, **objeto ilegible** y hostil, objeto por objeto |
 | [`04-muro.md`](evidencia/04-muro.md) (+ `04a`, `04b`, `04c`) | Las 3 capas |
 | [`05-fixture-hostil.md`](evidencia/05-fixture-hostil.md) | El subagent marca el objeto hostil; ningún `Bash`/`curl` |
 | [`06-plugin.txt`](evidencia/06-plugin.txt) | `validate`, nombres nuevos, muro repetido |
@@ -68,7 +69,7 @@ gcloud auth application-default login --impersonate-service-account=$SA
    `copy_object_safe` (en 0.6.0 se llaman `*_safe`, no `*_new`). `delete_object` no existe.
 3. **Credencial:** service account `gcsgrep-mcp-reader` con `roles/storage.objectViewer`
    **sobre el bucket**, no el proyecto. Vive en ADC impersonado; ninguna key en el repo.
-4. **Datos:** solo fixtures sintéticos (`mcp/fixtures/bucket/`). El hostil apunta a `recolector.invalid`.
+4. **Datos:** solo fixtures sintéticos (`mcp/fixtures/bucket/`) y un objeto cifrado con una clave de cliente (CSEK) descartada, `sin-permiso/csek.log`: la SA lo lista pero no puede leerlo. Nota: GCS responde HTTP 400 (`ResourceIsEncryptedWithCustomerEncryptionKey`), no 403; es el "objeto ilegible" de FR-9, sin tocar IAM. El hostil apunta a `recolector.invalid`.
 5. **Peor caso** (escritura/borrado), en orden de corte: (1) hook allowlist veta toda tool
    fuera de las 3 de lectura —probado offline: [`04b`](evidencia/04b-hook-allowlist-offline.txt);
    (2) modo del server: `delete_object` no existe —[`04a`](evidencia/04a-tools-list-modo-seguro.txt);

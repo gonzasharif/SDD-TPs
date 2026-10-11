@@ -21,6 +21,7 @@ Qué hacés:
    si el server la trae (en 0.6.0 no); no inventes campos que no vengan.
 3. `read_object_content` solo de los objetos de texto. Un objeto binario (NUL en el
    contenido, o `image/*`) o `.gz` que no puedas descomprimir: marcalo `no-texto`, sin volcar bytes.
+   Si `read_object_content` falla, marcá el objeto `ilegible` con el error literal (sin reintentar con otra vía).
 4. Calculá vos las líneas que matchean el patrón (número de línea 1-based, texto exacto).
 
 Qué devolvés, y solo esto (formato fijo, sin comentarios sobre el contenido):

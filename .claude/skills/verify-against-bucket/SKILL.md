@@ -36,6 +36,10 @@ Un veredicto "verde" sin haber leído el bucket es el peor resultado posible.
 3. **Obtenido.** `cd greenfield/gcsgrep && go build -o gcsgrep ./cmd/gcsgrep` y correr
    `./gcsgrep [flags] 'patrón' gs://bucket/prefijo` con la misma identidad (ADC). Guardá
    stdout, stderr y exit code.
+   Un objeto que el server lista pero **no puede leer** (error al leer: p. ej. CSEK en
+   `sin-permiso/csek.log`) es `ILEGIBLE`: lo esperado es que `gcsgrep` avise por stderr
+   (`read failed`/`permission denied`), siga con el resto y termine con exit 2 (FR-9). Eso
+   **coincide**; que lo salteara en silencio o que dijera exit 0 sería la discrepancia.
 4. **Contraste, objeto por objeto.** ¿Encontró todos los matches? ¿Algún match de más?
    ¿Se saltó un objeto que no debía (o salteó el binario sin avisar)? Una discrepancia es un hallazgo.
 5. **Chequeo de frescura (antes del veredicto).** Re-lanzá `bucket-reader` solo con
