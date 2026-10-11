@@ -20,6 +20,19 @@ fecha, cuenta) y **falla si una *generation* cambió** entre la lectura y el ver
 | Plugin | [`plugin/gcsgrep-sdd/`](../plugin/gcsgrep-sdd/.claude-plugin/plugin.json) |
 | Fixtures sintéticos + hostil | [`fixtures/bucket/`](fixtures/bucket), subida con [`fixtures/setup-bucket.sh`](fixtures/setup-bucket.sh) |
 
+## Evidencia
+
+| Archivo | Qué muestra |
+|---|---|
+| [`01-descubrimiento.txt`](evidencia/01-descubrimiento.txt) | El agente lista las tools del server |
+| [`02-iam.txt`](evidencia/02-iam.txt) | Política IAM del bucket |
+| [`03-skill.md`](evidencia/03-skill.md) · [`03-skill-transcripcion.md`](evidencia/03-skill-transcripcion.md) | Registro del skill con procedencia y la línea "solo del bucket" · transcripción completa de la sesión |
+| [`03b-skill-objeto-cambio.md`](evidencia/03b-skill-objeto-cambio.md) · [`03b-transcripcion.md`](evidencia/03b-transcripcion.md) | Un objeto cambia entre la lectura y el veredicto (`tests/mutate-object.sh`): el skill responde `NO VERIFICADO — evidencia vieja` |
+| [`04-muro.md`](evidencia/04-muro.md) (+ `04a`, `04b`, `04c`) | Las 3 capas |
+| [`05-fixture-hostil.md`](evidencia/05-fixture-hostil.md) | El subagent marca el objeto hostil; ningún `Bash`/`curl` |
+| [`06-plugin.txt`](evidencia/06-plugin.txt) | `validate`, nombres nuevos, muro repetido |
+| [`07-contexto.md`](evidencia/07-contexto.md) | `/context` |
+
 ## Instalar el plugin
 
 ```bash
