@@ -1,0 +1,16 @@
+# Descubrimiento: el agente (claude -p, --mcp-config .mcp.json) lista las tools del server 'gcs' @0.6.0. 2026-10-11T19:22:42Z
+mcp__gcs__check_iam_permissions
+mcp__gcs__copy_object_safe
+mcp__gcs__create_bucket
+mcp__gcs__execute_insights_query
+mcp__gcs__get_bucket_location
+mcp__gcs__get_bucket_metadata
+mcp__gcs__get_metadata_table_schema
+mcp__gcs__list_buckets
+mcp__gcs__list_insights_configs
+mcp__gcs__list_objects
+mcp__gcs__read_object_content
+mcp__gcs__read_object_metadata
+mcp__gcs__upload_object_safe
+mcp__gcs__view_iam_policy
+mcp__gcs__write_object_safe
