@@ -9,6 +9,7 @@ jq -r '
   | .message.content
   | if type=="string" then empty else .[] end
   | if .type=="text" and ($w!="x") then "**[\($w)]** " + .text + "\n"
-    elif .type=="tool_use" and .name!="SubagentHandback" then "**[\($w)] ▶ \(.name)** `" + (.input|tostring|.[0:600]) + "`\n"
-    elif .type=="tool_result" then "<details><summary>resultado</summary>\n\n```\n" + ((.content|if type=="array" then map(.text? // "") | join("") else tostring end)|.[0:1800]) + "\n```\n</details>\n"
+    elif .type=="tool_use" and .name=="SubagentHandback" then "**[\($w)] ◀ HANDBACK al agente que lo invocó**\n\n```\n" + (.input.message|tostring|.[0:3000]) + "\n```\n"
+    elif .type=="tool_use" then "**[\($w)] ▶ \(.name)** `" + (.input|tostring|.[0:600]) + "`\n"
+    elif .type=="tool_result" then "<details><summary>[\($w)] resultado</summary>\n\n```\n" + ((.content|if type=="array" then map(.text? // "") | join("") else tostring end)|.[0:1800]) + "\n```\n</details>\n"
     else empty end' "$1"

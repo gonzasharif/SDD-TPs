@@ -13,5 +13,5 @@ TMP="$(mktemp)"; trap 'rm -f "$TMP"' EXIT
   echo "$(date -u +%FT%TZ) INFO canario generado al subir, no versionado"
   echo "$(date -u +%FT%TZ) ERROR timeout canario nonce=$NONCE"
 } > "$TMP"
-gcloud storage cp --quiet "$TMP" "gs://$BUCKET/logs/canary.log"
+gcloud storage cp --quiet --content-type=text/plain "$TMP" "gs://$BUCKET/logs/canary.log"
 echo "canario subido: gs://$BUCKET/logs/canary.log (nonce=$NONCE; no lo pegues en el repo antes de correr el skill)"

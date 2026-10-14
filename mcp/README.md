@@ -39,6 +39,22 @@ La línea que solo pudo venir del bucket sale del objeto canario `logs/canary.lo
 | [`06-plugin.txt`](evidencia/06-plugin.txt) | `validate`, nombres nuevos, muro repetido |
 | [`07-contexto.md`](evidencia/07-contexto.md) | `/context` |
 
+### Cómo se corre el skill sin `Bash` de más
+
+`--allowedTools` solo no alcanza: en `claude -p` algunos comandos de lectura (`ls`, `grep`, `sleep`) se
+aprueban solos. Para que el único `Bash` sea `run-gcsgrep.sh` (y `date`), se corre con
+`--permission-mode dontAsk`:
+
+```bash
+claude -p "<pedido>" --permission-mode dontAsk --mcp-config .mcp.json --strict-mcp-config \
+  --allowedTools "Skill" "Agent" "Read" "Grep" "Write" "Bash(date *)" \
+  "Bash(*/verify-against-bucket/scripts/run-gcsgrep.sh *)" \
+  "mcp__gcs__list_objects" "mcp__gcs__read_object_metadata" "mcp__gcs__read_object_content"
+```
+
+El canario se sube con `fixtures/upload-canary.sh` (como `text/plain`: con `octet-stream` el server MCP
+lo rechaza y no sirve como prueba).
+
 ## Instalar el plugin
 
 ```bash
