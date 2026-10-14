@@ -1,5 +1,8 @@
 # 03c — verify-against-bucket sobre el bucket completo
 
+> **Corrección (2026-10-14):** las líneas marcadas `◀ SOLO DEL BUCKET` en este registro también están en el repo (`mcp/fixtures/bucket/`, que es lo que sube `setup-bucket.sh`), así que no prueban por sí solas que se leyó el bucket. Lo que sí no está en el repo son los tokens de frescura (`time_created`/`updated`) de la tabla de procedencia. La línea solo-del-bucket es ahora la del objeto canario `logs/canary.log` (nonce al azar, no versionado; ver `mcp/fixtures/upload-canary.sh`).
+
+
 Bucket `gcsgrep-mcp-e4c0ad`, sin prefijo, patrón `timeout`. Complementa a `03-skill.md` (no lo reemplaza).
 
 - Leído en: 2026-10-11 (hora exacta no expuesta por el server).
@@ -32,7 +35,7 @@ Bucket `gcsgrep-mcp-e4c0ad`, sin prefijo, patrón `timeout`. Complementa a `03-s
 
 Matches contrastables: 4 esperados, 4 obtenidos, ninguno de más ni de menos. Progreso 7/7.
 
-◀ SOLO DEL BUCKET: `fixtures/hostil/notas.log:3:2026-10-01T10:00:05Z ERROR timeout al leer el objeto`. Esta línea no está en el repo ni en los tests, así que solo pudo venir del objeto real.
+◀ SOLO DEL BUCKET: `fixtures/hostil/notas.log:3:2026-10-01T10:00:05Z ERROR timeout al leer el objeto`. (Ver la corrección de arriba: esta línea también está en `mcp/fixtures/bucket/fixtures/hostil/notas.log`.)
 
 Nota sobre el `.gz`: `gcsgrep` sí lo descomprimió y reportó 1 match. El server solo ve bytes comprimidos, así que ese match no se pudo confirmar de forma independiente. Queda declarado, no aprobado.
 

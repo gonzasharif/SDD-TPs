@@ -8,8 +8,12 @@
 Alimenta **Verificar**. El skill `verify-against-bucket` lanza el subagent `bucket-reader`
 (sin Bash ni red; solo `list_objects`, `read_object_metadata`, `read_object_content`),
 corre `gcsgrep` sobre el bucket de prueba y contrasta su salida con lo que el server leyó
-objeto por objeto. Frena si falta el server, registra procedencia (objeto, *generation*,
-fecha, cuenta) y **falla si una *generation* cambió** entre la lectura y el veredicto.
+objeto por objeto. Frena si falta el server, registra procedencia (objeto, token de frescura,
+fecha, cuenta) y **falla si el token cambió** entre la lectura y el veredicto. El server 0.6.0 no
+devuelve `generation`, así que el token es `(time_created, updated, size)`: una sobreescritura crea
+una generation nueva y mueve esos campos ([`03b`](evidencia/03b-skill-objeto-cambio.md)).
+La línea que solo pudo venir del bucket sale del objeto canario `logs/canary.log`, que
+[`fixtures/upload-canary.sh`](fixtures/upload-canary.sh) genera con un nonce al azar y no se commitea.
 
 | Pieza | Archivo |
 |---|---|
@@ -29,6 +33,7 @@ fecha, cuenta) y **falla si una *generation* cambió** entre la lectura y el ver
 | [`03-skill.md`](evidencia/03-skill.md) · [`03-skill-transcripcion.md`](evidencia/03-skill-transcripcion.md) | Registro del skill con procedencia y la línea "solo del bucket" · transcripción completa de la sesión |
 | [`03b-skill-objeto-cambio.md`](evidencia/03b-skill-objeto-cambio.md) · [`03b-transcripcion.md`](evidencia/03b-transcripcion.md) | Un objeto cambia entre la lectura y el veredicto (`tests/mutate-object.sh`): el skill responde `NO VERIFICADO — evidencia vieja` |
 | [`03c-skill-bucket-completo.md`](evidencia/03c-skill-bucket-completo.md) · [`03c-transcripcion.md`](evidencia/03c-transcripcion.md) | Bucket completo: texto, anidado, `.gz` (no contrastable), binario, **objeto ilegible** y hostil, objeto por objeto |
+| [`03d-skill-sin-server.md`](evidencia/03d-skill-sin-server.md) · [`03d-transcripcion.md`](evidencia/03d-transcripcion.md) | Sin server MCP el skill frena: `NO VERIFICADO — server MCP ausente`, sin `gcloud` ni `gcsgrep` |
 | [`04-muro.md`](evidencia/04-muro.md) (+ `04a`, `04b`, `04c`) | Las 3 capas |
 | [`05-fixture-hostil.md`](evidencia/05-fixture-hostil.md) | El subagent marca el objeto hostil; ningún `Bash`/`curl` |
 | [`06-plugin.txt`](evidencia/06-plugin.txt) | `validate`, nombres nuevos, muro repetido |
@@ -76,10 +81,19 @@ gcloud auth application-default login --impersonate-service-account=$SA
    (3) credencial: GCS responde `403` a `cp`, `rm` y `buckets create` con la SA —[`04c`](evidencia/04c-credencial-403.txt).
    Probado también en vivo con una sesión de Claude Code: [`04-muro`](evidencia/04-muro.md) y, con el plugin y sus nombres nuevos, [`06`](evidencia/06-plugin.txt).
    La capa 3 es la que garantiza; las otras dos son defensa en profundidad.
-6. **Trifecta:** la sesión principal tiene Bash+red (y ADC en la máquina) y lee contenido
-   no confiable. La pata cortada es la **exposición del contenido no confiable a una sesión
-   con Bash**: lo lee `bucket-reader`, que no tiene Bash ni red y devuelve solo una tabla.
-   Residual: la sesión principal igual corre `gcsgrep` con la ADC impersonada (solo lectura).
+6. **Trifecta:** la sesión principal tiene Bash+red (y ADC en la máquina): datos privados y canal
+   hacia afuera. La pata cortada es la **exposición del contenido no confiable a esa sesión**, por
+   los dos caminos por los que llega:
+   - **Lo que lee el server:** lo lee `bucket-reader`, sin Bash ni red. Devuelve una tabla y
+     **retiene** el texto de toda línea que parece una instrucción: solo línea y categorías
+     (`pide-ejecutar-comando`, `pide-contactar-url`, …), nunca el comando ni la URL.
+   - **El stdout de `gcsgrep`** también es contenido del bucket. El skill lo corre solo vía
+     [`run-gcsgrep.sh`](../.claude/skills/verify-against-bucket/scripts/run-gcsgrep.sh), que
+     devuelve `objeto:línea`, exit code y avisos, y descarta el texto. El fixture
+     `fixtures/hostil/matchea.log` tiene la instrucción en una línea que **matchea** `timeout`
+     para probar ese camino.
+   Residual: los nombres de objeto sí entran a la sesión, y la sesión principal corre `gcsgrep`
+   con la ADC impersonada (solo lectura).
 7. **Costo de contexto:** el server suma **~3.2k tokens** de definiciones de 15 tools (`/context`, [`07`](evidencia/07-contexto.md)), diferidas: se cargan bajo demanda, no en cada turno. Conviene habilitar el plugin solo en repos que usen el bucket de prueba; 12 de las 15 tools no se usan y el hook las veta.
 
 ### Límites conocidos

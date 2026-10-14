@@ -1,5 +1,8 @@
 # 03 — verify-against-bucket: gs://gcsgrep-mcp-e4c0ad/logs/ , patrón `timeout`
 
+> **Corrección (2026-10-14):** las líneas marcadas `◀ SOLO DEL BUCKET` en este registro también están en el repo (`mcp/fixtures/bucket/`, que es lo que sube `setup-bucket.sh`), así que no prueban por sí solas que se leyó el bucket. Lo que sí no está en el repo son los tokens de frescura (`time_created`/`updated`) de la tabla de procedencia. La línea solo-del-bucket es ahora la del objeto canario `logs/canary.log` (nonce al azar, no versionado; ver `mcp/fixtures/upload-canary.sh`).
+
+
 Fecha: 2026-10-11. Cuenta: declarada `gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com` (ADC impersonada; el server no la expone).
 Server MCP: `storage-mcp@0.6.0`, ESTADO: OK. No devuelve `generation`; token de frescura = `(time_created, updated, size)`.
 

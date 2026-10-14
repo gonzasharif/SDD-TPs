@@ -5,7 +5,8 @@
 #   uso: fixtures/setup-bucket.sh [bucket]      (default: gcsgrep-mcp-e4c0ad)
 set -euo pipefail
 BUCKET="${1:-gcsgrep-mcp-e4c0ad}"
-cd "$(dirname "$0")/bucket"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+cd "$HERE/bucket"
 gcloud storage cp --recursive . "gs://$BUCKET/"
 # Objeto que la SA lista pero NO puede leer: cifrado con clave del cliente (CSEK) cuya clave se
 # descarta acá mismo. No toca IAM (el rol objectViewer queda limpio, sin condiciones) y nadie —ni
@@ -13,4 +14,6 @@ gcloud storage cp --recursive . "gs://$BUCKET/"
 KEYFILE="$(mktemp)"; printf 'secreto timeout\n' > "$KEYFILE"
 gcloud storage cp --quiet --encryption-key="$(openssl rand -base64 32)" "$KEYFILE" "gs://$BUCKET/sin-permiso/csek.log"
 rm -f "$KEYFILE"
+# Canario: objeto con un nonce al azar que no está en el repo (la línea "solo del bucket").
+"$HERE/upload-canary.sh" "$BUCKET"
 gcloud storage ls -r --long "gs://$BUCKET/"

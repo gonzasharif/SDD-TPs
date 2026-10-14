@@ -1,3 +1,5 @@
+# Capa 1 offline: el hook compara el nombre COMPLETO de la tool (prefijo + tool), no un sufijo. 2026-10-14T14:57:27Z
+# $ mcp/tests/test-allowlist.sh mcp__gcs__ .claude/hooks/gcs-allowlist.sh
 OK     exit=0 (esperado 0)  mcp__gcs__list_objects
 OK     exit=0 (esperado 0)  mcp__gcs__read_object_metadata
 OK     exit=0 (esperado 0)  mcp__gcs__read_object_content
@@ -13,5 +15,38 @@ OK     exit=2 (esperado 2)  mcp__gcs__delete_object
          stderr: BLOQUEADO por gcs-allowlist: la tool 'mcp__gcs__delete_object' no está en la allowlist (list_objects read_object_metadata read_object_content).
 OK     exit=2 (esperado 2)  mcp__gcs__tool_nueva_de_v9
          stderr: BLOQUEADO por gcs-allowlist: la tool 'mcp__gcs__tool_nueva_de_v9' no está en la allowlist (list_objects read_object_metadata read_object_content).
+OK     exit=2 (esperado 2)  mcp__gcs__admin__read_object_content
+         stderr: BLOQUEADO por gcs-allowlist: la tool 'mcp__gcs__admin__read_object_content' no está en la allowlist (list_objects read_object_metadata read_object_content).
+OK     exit=2 (esperado 2)  mcp__gcs__write_object_safe__list_objects
+         stderr: BLOQUEADO por gcs-allowlist: la tool 'mcp__gcs__write_object_safe__list_objects' no está en la allowlist (list_objects read_object_metadata read_object_content).
+OK     exit=2 (esperado 2)  mcp__gcs__list_objects
+         stderr: BLOQUEADO por gcs-allowlist: bucket '<vacío>' != 'gcsgrep-mcp-e4c0ad' (el único permitido).
 OK     exit=2 (esperado 2)  mcp__gcs__read_object_content
          stderr: BLOQUEADO por gcs-allowlist: bucket 'un-bucket-real-de-prod' != 'gcsgrep-mcp-e4c0ad' (el único permitido).
+# exit=0
+
+# $ mcp/tests/test-allowlist.sh mcp__plugin_gcsgrep-sdd_gcs__ plugin/gcsgrep-sdd/hooks/gcs-allowlist.sh
+OK     exit=0 (esperado 0)  mcp__plugin_gcsgrep-sdd_gcs__list_objects
+OK     exit=0 (esperado 0)  mcp__plugin_gcsgrep-sdd_gcs__read_object_metadata
+OK     exit=0 (esperado 0)  mcp__plugin_gcsgrep-sdd_gcs__read_object_content
+OK     exit=2 (esperado 2)  mcp__plugin_gcsgrep-sdd_gcs__write_object_safe
+         stderr: BLOQUEADO por gcs-allowlist: la tool 'mcp__plugin_gcsgrep-sdd_gcs__write_object_safe' no está en la allowlist (list_objects read_object_metadata read_object_content).
+OK     exit=2 (esperado 2)  mcp__plugin_gcsgrep-sdd_gcs__upload_object_safe
+         stderr: BLOQUEADO por gcs-allowlist: la tool 'mcp__plugin_gcsgrep-sdd_gcs__upload_object_safe' no está en la allowlist (list_objects read_object_metadata read_object_content).
+OK     exit=2 (esperado 2)  mcp__plugin_gcsgrep-sdd_gcs__copy_object_safe
+         stderr: BLOQUEADO por gcs-allowlist: la tool 'mcp__plugin_gcsgrep-sdd_gcs__copy_object_safe' no está en la allowlist (list_objects read_object_metadata read_object_content).
+OK     exit=2 (esperado 2)  mcp__plugin_gcsgrep-sdd_gcs__create_bucket
+         stderr: BLOQUEADO por gcs-allowlist: la tool 'mcp__plugin_gcsgrep-sdd_gcs__create_bucket' no está en la allowlist (list_objects read_object_metadata read_object_content).
+OK     exit=2 (esperado 2)  mcp__plugin_gcsgrep-sdd_gcs__delete_object
+         stderr: BLOQUEADO por gcs-allowlist: la tool 'mcp__plugin_gcsgrep-sdd_gcs__delete_object' no está en la allowlist (list_objects read_object_metadata read_object_content).
+OK     exit=2 (esperado 2)  mcp__plugin_gcsgrep-sdd_gcs__tool_nueva_de_v9
+         stderr: BLOQUEADO por gcs-allowlist: la tool 'mcp__plugin_gcsgrep-sdd_gcs__tool_nueva_de_v9' no está en la allowlist (list_objects read_object_metadata read_object_content).
+OK     exit=2 (esperado 2)  mcp__plugin_gcsgrep-sdd_gcs__admin__read_object_content
+         stderr: BLOQUEADO por gcs-allowlist: la tool 'mcp__plugin_gcsgrep-sdd_gcs__admin__read_object_content' no está en la allowlist (list_objects read_object_metadata read_object_content).
+OK     exit=2 (esperado 2)  mcp__plugin_gcsgrep-sdd_gcs__write_object_safe__list_objects
+         stderr: BLOQUEADO por gcs-allowlist: la tool 'mcp__plugin_gcsgrep-sdd_gcs__write_object_safe__list_objects' no está en la allowlist (list_objects read_object_metadata read_object_content).
+OK     exit=2 (esperado 2)  mcp__plugin_gcsgrep-sdd_gcs__list_objects
+         stderr: BLOQUEADO por gcs-allowlist: bucket '<vacío>' != 'gcsgrep-mcp-e4c0ad' (el único permitido).
+OK     exit=2 (esperado 2)  mcp__plugin_gcsgrep-sdd_gcs__read_object_content
+         stderr: BLOQUEADO por gcs-allowlist: bucket 'un-bucket-real-de-prod' != 'gcsgrep-mcp-e4c0ad' (el único permitido).
+# exit=0

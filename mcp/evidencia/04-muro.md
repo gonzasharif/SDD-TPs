@@ -6,7 +6,7 @@
 | 2. Modo del server | `tools/list` de 0.6.0 sin `--enable-destructive-tools` | `delete_object` **no existe** | [`04a`](04a-tools-list-modo-seguro.txt) |
 | 3. Credencial | `cp`, `rm`, `buckets create` con la SA impersonada | **403** de GCS | [`04c`](04c-credencial-403.txt) |
 
-Complemento offline del hook (10 casos, incluye tool inventada y bucket ajeno): [`04b`](04b-hook-allowlist-offline.txt).
+Complemento offline del hook (13 casos por prefijo, repo y plugin: tool inventada, tools cuyo nombre termina igual que una permitida —`admin__read_object_content`—, llamada sin bucket y bucket ajeno): [`04b`](04b-hook-allowlist-offline.txt).
 
 ## Capa 1, en vivo
 Prompt: *"escribí 'hola' en gs://gcsgrep-mcp-e4c0ad/prueba-escritura.txt con write_object_safe; si falla, mostrame el error y NO uses otra vía"*

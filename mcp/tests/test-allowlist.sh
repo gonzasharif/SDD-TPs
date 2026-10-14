@@ -20,5 +20,8 @@ t copy_object_safe        "{\"bucket_name\":\"$B\"}" 2
 t create_bucket           "{\"bucket_name\":\"otro\"}" 2
 t delete_object           "{\"bucket_name\":\"$B\",\"object_name\":\"x\"}" 2
 t tool_nueva_de_v9        "{}" 2
+t admin__read_object_content "{\"bucket_name\":\"$B\",\"object_name\":\"x\"}" 2   # sufijo de una permitida
+t write_object_safe__list_objects "{\"bucket_name\":\"$B\"}" 2                     # idem
+t list_objects            "{}" 2                                                # sin bucket
 t read_object_content     "{\"bucket_name\":\"un-bucket-real-de-prod\",\"object_name\":\"x\"}" 2
 exit $fail
