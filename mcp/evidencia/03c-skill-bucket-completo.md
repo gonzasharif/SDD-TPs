@@ -1,6 +1,6 @@
 # 03c — verify-against-bucket sobre el bucket completo
 
-> **Corrección (2026-10-14):** las líneas marcadas `◀ SOLO DEL BUCKET` en este registro también están en el repo (`mcp/fixtures/bucket/`, que es lo que sube `setup-bucket.sh`), así que no prueban por sí solas que se leyó el bucket. Lo que sí no está en el repo son los tokens de frescura (`time_created`/`updated`) de la tabla de procedencia. La línea solo-del-bucket es ahora la del objeto canario `logs/canary.log` (nonce al azar, no versionado; ver `mcp/fixtures/upload-canary.sh`).
+> **Corrección (2026-10-14):** esta corrida es histórica: se hizo con el diseño anterior, y las líneas marcadas `◀ SOLO DEL BUCKET` también están en el repo (`mcp/fixtures/bucket/`), así que no prueban por sí solas que se leyó el bucket. Además, al volver a subir los fixtures se regeneraron los objetos y los tokens de frescura (`time_created`/`updated`) de este registro ya no coinciden con el bucket. La evidencia vigente es `03-skill.md` (línea solo-del-bucket = canario `logs/canary.log`, nonce al azar no versionado; ver `mcp/fixtures/upload-canary.sh`).
 
 
 Bucket `gcsgrep-mcp-e4c0ad`, sin prefijo, patrón `timeout`. Complementa a `03-skill.md` (no lo reemplaza).
