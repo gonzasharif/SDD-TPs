@@ -12,20 +12,22 @@
 #   - exit 2 → VETOES the action; stderr is shown to the agent.
 #   - Any other code → non-blocking error (the action goes through anyway).
 #
-# Requires: jq, Go (on PATH, at /usr/local/go/bin/go, or via $GO_BIN).
+# Requires: Go (on PATH, at /usr/local/go/bin/go, or via $GO_BIN). jq is optional.
 set -uo pipefail
 
 EVENT="$(cat)"
 
-if ! command -v jq >/dev/null 2>&1; then
-  echo "tests-green-before-commit: jq is missing; cannot inspect the event" >&2
-  exit 1
+# Without jq the event is inspected raw: the JSON still contains the command text, so a
+# `git commit` is still recognised and vetoed. Failing open here would switch the guardrail
+# off exactly when the machine lacks a tool.
+if command -v jq >/dev/null 2>&1; then
+  COMMAND="$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""')"
+else
+  COMMAND="$EVENT"
 fi
 
-COMMAND="$(printf '%s' "$EVENT" | jq -r '.tool_input.command // ""')"
-
 # Only `git commit` (also `git -C dir commit`) is checked.
-printf '%s' "$COMMAND" | grep -qE '(^|[;&|[:space:]])git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+commit([[:space:]]|$)' \
+printf '%s' "$COMMAND" | grep -qE '(^|[;&|"[:space:]])git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+commit([[:space:]"]|$)' \
   || exit 0
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"

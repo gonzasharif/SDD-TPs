@@ -1,6 +1,6 @@
 {
   "name": "gcsgrep-sdd",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Toolkit SDD de gcsgrep: skills, subagents, hooks y un server MCP de GCS en modo lectura con muro de tres capas.",
   "author": { "name": "gonzasharif" },
   "userConfig": {
