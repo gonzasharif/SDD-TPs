@@ -8,6 +8,7 @@ recorre el mismo pipeline de SDD sobre un caso distinto:
 | [`greenfield/`](greenfield/) | 1 | `gcsgrep`: grep sobre objetos de Google Cloud Storage | Proyecto desde cero | Spec, plan y **código** de la Iteración 1, verificado |
 | [`brownfield/`](brownfield/) | 2 | Cliente SSH nativo en `tmux`, solo Linux | Cambio sobre un codebase existente | Notas de exploración y spec. **Sin implementación** |
 | [`toolkit/`](toolkit/) | 3 | El pipeline de L1–L2 encodeado para el agente | Skill + subagent + hook + rule, instalados en [`.claude/`](.claude/) | Toolkit funcionando y evidencia de cada pieza ejecutándose |
+| [`mcp/`](mcp/) | 4 | `gcsgrep` contra un bucket de GCS real, por MCP | Server MCP + skill + subagent + hook + plugin ([`plugin/gcsgrep-sdd/`](plugin/gcsgrep-sdd/)) | Verificación contra el bucket, muro de 3 capas probado, plugin validado y **nota de seguridad** ([`mcp/README.md`](mcp/README.md)) |
 
 Cada carpeta tiene su propio `README.md` con el detalle de lo que contiene y cómo
 recorrerlo.
@@ -43,6 +44,9 @@ SDD-TPs/
 │   ├── spec-brownfield.md
 │   └── revision-spec.md
 ├── toolkit/                    ← TP de la Lección 3: README y evidencia
+├── mcp/                        ← TP de la Lección 4: README (nota de seguridad), fixtures, tests, evidencia
+├── plugin/gcsgrep-sdd/         ← el toolkit empaquetado como plugin
+├── .mcp.json                   ← server MCP de GCS, versión fijada
 ├── .claude/                    ← las piezas del toolkit, donde el agente las carga
 └── CLAUDE.md                   ← rule del toolkit
 ```

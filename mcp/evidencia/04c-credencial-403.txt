@@ -1,0 +1,35 @@
+# Capa 3: la identidad del server (SA impersonada) intenta escribir y borrar. 2026-10-11T19:20:09Z
+
+$ gcloud storage ls gs://gcsgrep-mcp-e4c0ad/logs/ --impersonate-service-account=gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com   # lectura: debe andar
+WARNING: This command is using service account impersonation. All API calls will be executed as [gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com].
+gs://gcsgrep-mcp-e4c0ad/logs/app.log.gz
+gs://gcsgrep-mcp-e4c0ad/logs/app1.log
+gs://gcsgrep-mcp-e4c0ad/logs/app2.log
+
+$ gcloud storage cp <archivo> gs://gcsgrep-mcp-e4c0ad/escritura-prohibida.txt --impersonate-service-account=gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com
+WARNING: This command is using service account impersonation. All API calls will be executed as [gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com].
+Copying file://mcp/fixtures/bucket/logs/app2.log to gs://gcsgrep-mcp-e4c0ad/escritura-prohibida.txt
+  
+WARNING: This command is using service account impersonation. All API calls will be executed as [gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com].
+WARNING: This command is using service account impersonation. All API calls will be executed as [gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com].
+WARNING: This command is using service account impersonation. All API calls will be executed as [gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com].
+ERROR: [gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com] does not have permission to access b instance [gcsgrep-mcp-e4c0ad] (or it may not exist): gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com does not have storage.objects.create access to the Google Cloud Storage object. Permission 'storage.objects.create' denied on resource '//storage.googleapis.com/projects/_/buckets/gcsgrep-mcp-e4c0ad/objects/escritura-prohibida.txt' (or it may not exist). This command is authenticated as gonzalocuri@gmail.com which is the active account specified by the [core/account] property. Impersonation is used to impersonate gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com.
+..............
+
+$ gcloud storage rm gs://gcsgrep-mcp-e4c0ad/logs/app2.log --impersonate-service-account=gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com
+Removing objects:
+WARNING: This command is using service account impersonation. All API calls will be executed as [gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com].
+  
+Removing gs://gcsgrep-mcp-e4c0ad/logs/app2.log...
+WARNING: This command is using service account impersonation. All API calls will be executed as [gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com].
+ERROR: HTTPError 403: gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com does not have storage.objects.delete access to the Google Cloud Storage object. Permission 'storage.objects.delete' denied on resource '//storage.googleapis.com/projects/_/buckets/gcsgrep-mcp-e4c0ad/objects/logs/app2.log' (or it may not exist). This command is authenticated as gonzalocuri@gmail.com which is the active account specified by the [core/account] property. Impersonation is used to impersonate gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com.
+...........
+
+$ gcloud storage buckets create gs://gcsgrep-mcp-e4c0ad-otro --project=gcsgrep-sdd-e4c0ad --impersonate-service-account=gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com
+Creating gs://gcsgrep-mcp-e4c0ad-otro/...
+WARNING: This command is using service account impersonation. All API calls will be executed as [gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com].
+ERROR: (gcloud.storage.buckets.create) HTTPError 403: gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com does not have storage.buckets.create access to the Google Cloud project. Permission 'storage.buckets.create' denied on resource '//storage.googleapis.com/projects/_/buckets/gcsgrep-mcp-e4c0ad-otro' (or it may not exist). This command is authenticated as gonzalocuri@gmail.com which is the active account specified by the [core/account] property. Impersonation is used to impersonate gcsgrep-mcp-reader@gcsgrep-sdd-e4c0ad.iam.gserviceaccount.com.
+
+# Verificación con la cuenta dueña: app2.log sigue ahí; escritura-prohibida.txt no existe
+ERROR: (gcloud.storage.ls) One or more URLs matched no objects.
+gs://gcsgrep-mcp-e4c0ad/logs/app2.log

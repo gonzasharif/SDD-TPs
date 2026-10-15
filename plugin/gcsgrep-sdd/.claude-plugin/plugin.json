@@ -1,0 +1,20 @@
+{
+  "name": "gcsgrep-sdd",
+  "version": "0.1.0",
+  "description": "Toolkit SDD de gcsgrep: skills, subagents, hooks y un server MCP de GCS en modo lectura con muro de tres capas.",
+  "author": { "name": "gonzasharif" },
+  "userConfig": {
+    "project_id": {
+      "type": "string",
+      "title": "Proyecto de GCP de prueba",
+      "description": "ID del proyecto de prueba (nunca producción).",
+      "required": true
+    },
+    "bucket_name": {
+      "type": "string",
+      "title": "Bucket de prueba",
+      "description": "Único bucket que el hook deja leer. Objetos sintéticos, nada real.",
+      "required": true
+    }
+  }
+}

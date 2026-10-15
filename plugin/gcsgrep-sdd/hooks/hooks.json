@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__plugin_gcsgrep-sdd_gcs__.*",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/gcs-allowlist.sh", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/tests-green-before-commit.sh", "timeout": 180 }
+        ]
+      }
+    ]
+  }
+}

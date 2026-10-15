@@ -10,6 +10,16 @@
             "timeout": 180
           }
         ]
+      },
+      {
+        "matcher": "mcp__gcs__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gcs-allowlist.sh",
+            "timeout": 10
+          }
+        ]
       }
     ]
   }
